@@ -30,6 +30,7 @@
 		<java.version>25</java.version>
 		<influxdb-client.version>8.0.0</influxdb-client.version>
 		<jjwt.version>0.13.0</jjwt.version>
+		<testcontainers.version>1.20.4</testcontainers.version>
 	</properties>
 	<dependencies>
 		<!-- Web -->
