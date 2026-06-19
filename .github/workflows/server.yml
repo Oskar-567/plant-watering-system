@@ -29,7 +29,9 @@ jobs:
 
       - name: Run tests
         working-directory: server
-        run: ./mvnw test --no-transfer-progress
+        run: |
+          chmod +x mvnw
+          ./mvnw test --no-transfer-progress
         # TODO: When Testcontainers integration tests are added, create
         # server/src/test/resources/application-ci.properties with a 'ci' Spring profile.
         # Testcontainers manages its own PostgreSQL/InfluxDB containers — no extra
