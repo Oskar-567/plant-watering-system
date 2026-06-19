@@ -1,0 +1,37 @@
+#pragma once
+
+// WiFi
+#define WIFI_SSID        "your-ssid"
+#define WIFI_PASSWORD    "your-password"
+
+// MQTT Broker (LAN IP of the server running Mosquitto)
+#define MQTT_BROKER      "192.168.x.x"
+#define MQTT_PORT        1883
+#define MQTT_USER        "mqtt-user"
+#define MQTT_PASSWORD    "mqtt-password"
+#define MQTT_CLIENT_ID   "plant-esp32"
+
+// OTA
+#define OTA_PASSWORD     "ota-password"
+#define OTA_HOSTNAME     "plant-esp32"
+
+// Pump relay
+#define RELAY_PIN        26
+#define RELAY_ACTIVE_LOW true   // true for most relay modules (LOW = on)
+
+// YSF201 flow meter
+#define FLOW_METER_PIN   27
+#define PULSES_PER_LITER 450    // calibrate for your sensor
+
+// Moisture sensors (capacitive, analog)
+#define SENSOR_COUNT         3
+#define MOISTURE_PINS_INIT   {34, 35, 32}
+#define MOISTURE_DRY_INIT    {3200, 3150, 3180}  // ADC reading in dry soil
+#define MOISTURE_WET_INIT    {1400, 1380, 1420}  // ADC reading in saturated soil
+
+// Reporting intervals (milliseconds)
+#define SENSOR_INTERVAL_MS   60000UL
+#define BATTERY_INTERVAL_MS  300000UL
+
+// Battery warning threshold (percent)
+#define BATTERY_LOW_THRESHOLD 20
