@@ -1,0 +1,24 @@
+name: App CI
+
+on:
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - 'app/**'
+
+jobs:
+  placeholder:
+    name: App CI
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Placeholder — App CI not yet configured
+        run: |
+          echo "App CI not yet configured."
+          echo "When the React Native app is scaffolded under app/, replace this step with:"
+          echo "  - actions/setup-node@v4 (Node LTS)"
+          echo "  - npm ci"
+          echo "  - npm test"
+          echo "  - Expo/EAS build step (optional)"

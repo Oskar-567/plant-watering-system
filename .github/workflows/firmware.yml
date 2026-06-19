@@ -1,0 +1,66 @@
+name: Firmware CI
+
+on:
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - 'firmware/**'
+
+jobs:
+  build-and-test:
+    name: Build & Test (native)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            firmware/.pio
+          key: pio-${{ runner.os }}-${{ hashFiles('firmware/platformio.ini') }}
+          restore-keys: |
+            pio-${{ runner.os }}-
+
+      - name: Install PlatformIO
+        run: pip install platformio
+
+      - name: Create CI stub config.h
+        run: |
+          cat > firmware/include/config.h << 'CFGEOF'
+          #pragma once
+          #define WIFI_SSID             "ci"
+          #define WIFI_PASSWORD         "ci"
+          #define MQTT_BROKER           "127.0.0.1"
+          #define MQTT_PORT             1883
+          #define MQTT_CLIENT_ID        "plant-ci"
+          #define MQTT_USER             ""
+          #define MQTT_PASSWORD         ""
+          #define OTA_HOSTNAME          "plant-esp32"
+          #define OTA_PASSWORD          "ci"
+          #define RELAY_PIN             26
+          #define RELAY_ACTIVE_LOW      true
+          #define FLOW_METER_PIN        27
+          #define PULSES_PER_LITER      450
+          #define SENSOR_COUNT          3
+          #define MOISTURE_PINS_INIT    {34, 35, 32}
+          #define MOISTURE_DRY_INIT     {3200, 3200, 3200}
+          #define MOISTURE_WET_INIT     {1400, 1400, 1400}
+          #define SENSOR_INTERVAL_MS    30000UL
+          #define BATTERY_INTERVAL_MS   60000UL
+          #define BATTERY_LOW_THRESHOLD 20.0f
+          CFGEOF
+
+      - name: Compile for ESP32
+        working-directory: firmware
+        run: pio run -e esp32dev
+
+      - name: Run native unit tests
+        working-directory: firmware
+        run: pio test -e native
