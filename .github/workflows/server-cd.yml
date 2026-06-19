@@ -41,6 +41,7 @@ jobs:
       - name: Build Docker image
         working-directory: server
         run: |
+          chmod +x mvnw
           ./mvnw spring-boot:build-image \
             -DskipTests \
             -Dspring-boot.build-image.imageName=ghcr.io/oskar-567/plant-watering-system-server:latest
