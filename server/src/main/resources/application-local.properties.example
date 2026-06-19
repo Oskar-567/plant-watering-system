@@ -1,0 +1,17 @@
+# Copy this file to application-local.properties and fill in your values.
+# application-local.properties is gitignored.
+
+DB_USERNAME=plant
+DB_PASSWORD=secret
+
+INFLUX_URL=http://localhost:8086
+INFLUX_TOKEN=local-dev-token
+INFLUX_ORG=plantorg
+INFLUX_BUCKET=plant-sensors
+
+JWT_SECRET=bG9jYWxkZXZzZWNyZXRrZXkxMjM0NTY3ODkwYWJjZGVm
+APP_PASSWORD=changeme
+
+MQTT_BROKER=192.168.x.x
+MQTT_USERNAME=
+MQTT_PASSWORD=

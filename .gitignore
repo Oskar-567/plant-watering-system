@@ -76,6 +76,7 @@ Thumbs.db
 # Java/Spring specific
 .metadata
 local.properties
+application-local.properties
 hs_err_pid*
 replay_pid*
 
