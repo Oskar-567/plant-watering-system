@@ -3,8 +3,6 @@ name: Server CI
 on:
   pull_request:
     branches: [main, dev]
-    paths:
-      - 'server/**'
 
 jobs:
   test:
