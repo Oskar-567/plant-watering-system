@@ -78,11 +78,13 @@ Server starts on `http://localhost:8080`.
 
 ## Key Commands
 
+> **PowerShell:** Wrap `-D` flags in quotes, e.g. `"-Dspring-boot.run.profiles=local"`
+
 | Command | Description |
 |---|---|
-| `./mvnw spring-boot:run -Dspring-boot.run.profiles=local` | Run locally |
+| `./mvnw spring-boot:run "-Dspring-boot.run.profiles=local"` | Run locally |
 | `./mvnw test` | Run tests |
-| `./mvnw spring-boot:build-image -DskipTests` | Build Docker image |
+| `./mvnw package "-DskipTests"` | Build JAR (used by CI/CD) |
 | `docker compose up -d` | Start local DB dependencies |
 | `docker compose down` | Stop local DB dependencies |
 
@@ -127,8 +129,13 @@ PostgreSQL and InfluxDB are spun up automatically per test run. No external depe
 
 ## Deployment
 
-Built as a Docker image and deployed to a k3s cluster. See the [homelab repo](../k3s-homelab/) for Kubernetes manifests.
+Deployed automatically via GitOps — push to `server/` on `main` triggers the pipeline:
 
-```bash
-./mvnw spring-boot:build-image -DskipTests
-```
+1. GitHub Actions builds the JAR (`mvn package`) and packages it into an arm64 Docker image via `Dockerfile`
+2. Image is pushed to GHCR (`ghcr.io/oskar-567/plant-watering-system-server`)
+3. Pipeline updates the image SHA in `k3s-homelab/infra/apps/plant-watering-system-server/deployment.yaml`
+4. Flux CD picks up the change and rolls out the new version on k3s
+
+Live at: `http://192.168.73.150:30080`
+
+See [k3s-homelab](../../k3s-homelab/) for Kubernetes manifests.
