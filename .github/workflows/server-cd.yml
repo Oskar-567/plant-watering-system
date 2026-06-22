@@ -30,6 +30,12 @@ jobs:
           restore-keys: |
             m2-${{ runner.os }}-
 
+      - name: Build JAR
+        working-directory: server
+        run: |
+          chmod +x mvnw
+          ./mvnw package -DskipTests
+
       - name: Log in to ghcr.io
         uses: docker/login-action@v4
         with:
@@ -41,24 +47,21 @@ jobs:
         id: sha
         run: echo "short=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
 
-      - name: Build Docker image
-        working-directory: server
-        run: |
-          chmod +x mvnw
-          ./mvnw spring-boot:build-image \
-            -DskipTests \
-            -Dspring-boot.build-image.imageName=ghcr.io/oskar-567/plant-watering-system-server:latest
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
-      - name: Tag with commit SHA
-        run: |
-          docker tag \
-            ghcr.io/oskar-567/plant-watering-system-server:latest \
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: server
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ghcr.io/oskar-567/plant-watering-system-server:latest
             ghcr.io/oskar-567/plant-watering-system-server:sha-${{ steps.sha.outputs.short }}
-
-      - name: Push both tags
-        run: |
-          docker push ghcr.io/oskar-567/plant-watering-system-server:latest
-          docker push ghcr.io/oskar-567/plant-watering-system-server:sha-${{ steps.sha.outputs.short }}
 
   deploy:
     name: Update Image Tag in k3s-homelab
