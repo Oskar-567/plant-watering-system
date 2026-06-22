@@ -59,3 +59,23 @@ jobs:
         run: |
           docker push ghcr.io/oskar-567/plant-watering-system-server:latest
           docker push ghcr.io/oskar-567/plant-watering-system-server:sha-${{ steps.sha.outputs.short }}
+
+  deploy:
+    name: Update Image Tag in k3s-homelab
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    steps:
+      - name: Clone k3s-homelab and update image tag
+        env:
+          PAT: ${{ secrets.K3S_HOMELAB_PAT }}
+        run: |
+          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+          git clone https://x-access-token:${PAT}@github.com/Oskar-567/k3s-homelab.git
+          cd k3s-homelab
+          sed -i "s|image: ghcr.io/oskar-567/plant-watering-system-server:sha-.*|image: ghcr.io/oskar-567/plant-watering-system-server:sha-${SHORT_SHA}|" \
+            infra/apps/plant-watering-system-server/deployment.yaml
+          git config user.email "github-actions@github.com"
+          git config user.name "github-actions[bot]"
+          git add infra/apps/plant-watering-system-server/deployment.yaml
+          git commit -m "chore: update server image to sha-${SHORT_SHA}"
+          git push
