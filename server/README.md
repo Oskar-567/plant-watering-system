@@ -9,12 +9,12 @@ Spring Boot REST API — central hub of the plant watering system. Receives sens
 | Language | Java 25 |
 | Framework | Spring Boot 4.1.0 |
 | Build | Maven |
-| Relational DB | PostgreSQL 16 (JPA + Flyway) |
+| Relational DB | PostgreSQL (JPA + Flyway) |
 | Time-series DB | InfluxDB 2.x (influxdb-client-java 8.0.0) |
 | Messaging | MQTT via Eclipse Paho (Mosquitto broker) |
 | Auth | Spring Security + JWT (JJWT 0.13.0) |
 | API Docs | SpringDoc OpenAPI (Swagger UI) |
-| Testing | JUnit 5, Testcontainers |
+| Testing | JUnit 5, MockMvc, Mockito |
 
 ## Architecture
 
@@ -29,83 +29,92 @@ The ESP32 publishes sensor readings (soil moisture, flow, battery) via MQTT. The
 ## Prerequisites
 
 - Java 25
-- Docker (for local PostgreSQL + InfluxDB)
+- Docker Desktop (for local PostgreSQL + InfluxDB)
 - A running Mosquitto broker (see [`infra/apps/mosquitto/`](../k3s-homelab/infra/apps/mosquitto/))
 
 ## Running Locally
 
-**1. Start dependencies:**
-
-```bash
-docker compose up -d
-```
-
-Starts PostgreSQL on port `5432` and InfluxDB on port `8086`.
-
-**2. Create `src/main/resources/application-local.properties`** (gitignored):
+**1. Create `src/main/resources/application-local.properties`** (gitignored):
 
 ```properties
 # PostgreSQL
-spring.datasource.url=jdbc:postgresql://localhost:5432/plantdb
+spring.datasource.url=jdbc:postgresql://<host>:5432/plantdb
 DB_USERNAME=plant
 DB_PASSWORD=secret
 
 # InfluxDB
-INFLUX_URL=http://localhost:8086/
-INFLUX_TOKEN=local-dev-token
-INFLUX_ORG=plantorg
+INFLUX_URL=http://<host>:8086/
+INFLUX_TOKEN=your-token
+INFLUX_ORG=homelab
 INFLUX_BUCKET=plant-sensors
 
 # JWT
-JWT_SECRET=local-dev-secret-key-min-32-chars-long-replace-in-prod
+JWT_SECRET=your-secret-min-32-chars
 
 # App
-APP_PASSWORD=localdev
+APP_PASSWORD=your-password
 
 # MQTT
-MQTT_BROKER=localhost
+MQTT_BROKER=<host>
 MQTT_USERNAME=plant
-MQTT_PASSWORD=your-mosquitto-password
+MQTT_PASSWORD=your-password
 ```
 
-**3. Run the server:**
+**2. Run the server:**
 
 ```bash
-./mvnw spring-boot:run -Dspring-boot.run.profiles=local
+./mvnw spring-boot:run "-Dspring-boot.run.profiles=local"
 ```
 
 Server starts on `http://localhost:8080`.
 
-## Key Commands
+> **PowerShell note:** Wrap `-D` flags in quotes, e.g. `"-Dspring-boot.run.profiles=local"`
 
-> **PowerShell:** Wrap `-D` flags in quotes, e.g. `"-Dspring-boot.run.profiles=local"`
+## Key Commands
 
 | Command | Description |
 |---|---|
-| `./mvnw spring-boot:run "-Dspring-boot.run.profiles=local"` | Run locally |
-| `./mvnw test` | Run tests |
+| `./mvnw spring-boot:run "-Dspring-boot.run.profiles=local"` | Run locally with local profile |
+| `./mvnw test` | Run all tests |
 | `./mvnw package "-DskipTests"` | Build JAR (used by CI/CD) |
-| `docker compose up -d` | Start local DB dependencies |
-| `docker compose down` | Stop local DB dependencies |
 
 ## API
 
 Interactive docs available at `http://localhost:8080/swagger-ui.html` when the server is running.
 
-### Planned Endpoints
+### Implemented Endpoints
 
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/auth/login` | Authenticate, returns JWT |
-| `GET` | `/plants` | List all plants |
-| `POST` | `/plants` | Create a plant |
-| `GET` | `/plants/{id}` | Get plant details |
-| `GET` | `/plants/{id}/moisture` | Soil moisture history (InfluxDB) |
-| `POST` | `/plants/{id}/water` | Trigger watering |
-| `GET` | `/plants/{id}/schedules` | List watering schedules |
-| `POST` | `/plants/{id}/schedules` | Create watering schedule |
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `POST` | `/auth/login` | — | Send password, receive JWT |
+| `GET` | `/instances` | Bearer | List all instances |
+| `GET` | `/instances/{id}` | Bearer | Get a single instance |
+| `POST` | `/instances` | Bearer | Create a new instance |
 
 All endpoints except `/auth/login` require `Authorization: Bearer <token>`.
+
+### Login Example (IntelliJ HTTP Client)
+
+```http
+### Login — token is saved automatically
+POST http://localhost:8080/auth/login
+Content-Type: application/json
+
+{"password": "{{APP_PASSWORD}}"}
+
+> {%
+  client.global.set("token", response.body.token);
+%}
+
+###
+
+### Create instance
+POST http://localhost:8080/instances
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"name": "Balcony", "mqttPrefix": "plant/balcony", "hasPump": true, "hasBattery": true, "sensorCount": 1}
+```
 
 ## MQTT Topics
 
@@ -119,19 +128,21 @@ All endpoints except `/auth/login` require `Authorization: Bearer <token>`.
 
 ## Testing
 
-Tests use Testcontainers — Docker must be running.
-
 ```bash
 ./mvnw test
 ```
 
-PostgreSQL and InfluxDB are spun up automatically per test run. No external dependencies needed.
+Tests run without any external dependencies:
+- **Unit tests** (`JwtTokenProviderTest`) — no Spring context needed
+- **Web-layer tests** (`@WebMvcTest`) — controller + security only, service is mocked via `@MockitoBean`
+
+> Note: Spring Boot 4 requires `spring-boot-starter-webmvc-test` for `@WebMvcTest`. Use `@MockitoBean` instead of the deprecated `@MockBean`.
 
 ## Deployment
 
 Deployed automatically via GitOps — push to `server/` on `main` triggers the pipeline:
 
-1. GitHub Actions builds the JAR (`mvn package`) and packages it into an arm64 Docker image via `Dockerfile`
+1. GitHub Actions builds the JAR (`mvn package -DskipTests`) and packages it into an arm64 Docker image via `Dockerfile`
 2. Image is pushed to GHCR (`ghcr.io/oskar-567/plant-watering-system-server`)
 3. Pipeline updates the image SHA in `k3s-homelab/infra/apps/plant-watering-system-server/deployment.yaml`
 4. Flux CD picks up the change and rolls out the new version on k3s
