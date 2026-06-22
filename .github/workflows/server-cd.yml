@@ -30,11 +30,15 @@ jobs:
           restore-keys: |
             m2-${{ runner.os }}-
 
-      - name: Build JAR
+      - name: Run tests
         working-directory: server
         run: |
           chmod +x mvnw
-          ./mvnw package -DskipTests
+          ./mvnw test
+
+      - name: Build JAR
+        working-directory: server
+        run: ./mvnw package -DskipTests
 
       - name: Log in to ghcr.io
         uses: docker/login-action@v4
