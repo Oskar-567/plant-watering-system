@@ -4,6 +4,7 @@ import com.plant_watering_system.server.dto.InstanceResponse;
 import com.plant_watering_system.server.security.JwtAuthFilter;
 import com.plant_watering_system.server.security.JwtTokenProvider;
 import com.plant_watering_system.server.security.SecurityConfig;
+import com.plant_watering_system.server.influx.InfluxQueryService;
 import com.plant_watering_system.server.service.InstanceService;
 import com.plant_watering_system.server.service.PumpService;
 import org.junit.jupiter.api.Test;
@@ -43,6 +44,9 @@ class InstanceControllerTest {
 
     @MockitoBean
     PumpService pumpService;
+
+    @MockitoBean
+    InfluxQueryService influxQueryService;
 
     @Test
     void getAllWithoutTokenReturns401() throws Exception {
