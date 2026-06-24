@@ -3,6 +3,7 @@ package com.plant_watering_system.server.mqtt;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.eclipse.paho.client.mqttv3.*;
+import org.springframework.context.annotation.Lazy;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,7 +28,7 @@ public class MqttClientManager implements MqttCallbackExtended {
             @Value("${mqtt.client-id}") String clientId,
             @Value("${mqtt.username:}") String username,
             @Value("${mqtt.password:}") String password,
-            MqttMessageHandler messageHandler) {
+            @Lazy MqttMessageHandler messageHandler) {
         try {
             this.client = new MqttClient("tcp://" + broker + ":" + port, clientId, new MemoryPersistence());
         } catch (MqttException e) {
