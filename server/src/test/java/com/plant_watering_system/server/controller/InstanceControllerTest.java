@@ -5,6 +5,7 @@ import com.plant_watering_system.server.security.JwtAuthFilter;
 import com.plant_watering_system.server.security.JwtTokenProvider;
 import com.plant_watering_system.server.security.SecurityConfig;
 import com.plant_watering_system.server.service.InstanceService;
+import com.plant_watering_system.server.service.PumpService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -39,6 +40,9 @@ class InstanceControllerTest {
 
     @MockitoBean
     InstanceService service;
+
+    @MockitoBean
+    PumpService pumpService;
 
     @Test
     void getAllWithoutTokenReturns401() throws Exception {
