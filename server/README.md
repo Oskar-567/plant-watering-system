@@ -90,6 +90,11 @@ Interactive docs available at `http://localhost:8080/swagger-ui.html` when the s
 | `GET` | `/instances` | Bearer | List all instances |
 | `GET` | `/instances/{id}` | Bearer | Get a single instance |
 | `POST` | `/instances` | Bearer | Create a new instance |
+| `POST` | `/instances/{id}/pump/start` | Bearer | Start pump — publishes MQTT command, opens WateringEvent |
+| `POST` | `/instances/{id}/pump/stop` | Bearer | Stop pump — publishes MQTT command |
+| `GET` | `/instances/{id}/watering-history` | Bearer | List all watering events descending by start time |
+| `GET` | `/instances/{id}/moisture?range=24h` | Bearer | Soil moisture history from InfluxDB |
+| `GET` | `/instances/{id}/battery?range=24h` | Bearer | Battery (soc + voltage) history from InfluxDB |
 
 All endpoints except `/auth/login` require `Authorization: Bearer <token>`.
 
@@ -133,8 +138,8 @@ Content-Type: application/json
 ```
 
 Tests run without any external dependencies:
-- **Unit tests** (`JwtTokenProviderTest`) — no Spring context needed
-- **Web-layer tests** (`@WebMvcTest`) — controller + security only, service is mocked via `@MockitoBean`
+- **Unit tests** (`JwtTokenProviderTest`, `PumpServiceTest`, `TankEmptyDetectionServiceTest`) — no Spring context, Mockito only
+- **Web-layer tests** (`@WebMvcTest`) — controller + security only, services mocked via `@MockitoBean`
 
 > Note: Spring Boot 4 requires `spring-boot-starter-webmvc-test` for `@WebMvcTest`. Use `@MockitoBean` instead of the deprecated `@MockBean`.
 
