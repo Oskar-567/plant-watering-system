@@ -26,6 +26,7 @@ import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -120,6 +121,31 @@ class InstanceControllerTest {
         mvc.perform(get("/instances/{id}/moisture", id).param("range", "24h)").with(user("test")))
                 .andExpect(status().isBadRequest());
         mvc.perform(get("/instances/{id}/battery", id).param("range", "0h").with(user("test")))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(sensorReadingService);
+    }
+
+    @Test
+    void getMoistureWithThirtyDayRangeIsAllowed() throws Exception {
+        var id = UUID.randomUUID();
+
+        mvc.perform(get("/instances/{id}/moisture", id).param("range", "30d").with(user("test")))
+                .andExpect(status().isOk());
+        mvc.perform(get("/instances/{id}/moisture", id).param("range", "720h").with(user("test")))
+                .andExpect(status().isOk());
+
+        // Duration equality is by length, so 30d and 720h are the same Duration
+        verify(sensorReadingService, times(2)).getMoisture(id, Duration.ofDays(30));
+    }
+
+    @Test
+    void getSensorHistoryWithRangeAboveThirtyDaysReturns400() throws Exception {
+        var id = UUID.randomUUID();
+
+        mvc.perform(get("/instances/{id}/moisture", id).param("range", "31d").with(user("test")))
+                .andExpect(status().isBadRequest());
+        mvc.perform(get("/instances/{id}/battery", id).param("range", "721h").with(user("test")))
                 .andExpect(status().isBadRequest());
 
         verifyNoInteractions(sensorReadingService);

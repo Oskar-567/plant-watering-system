@@ -102,12 +102,6 @@
 			<version>3.1.0</version>
 		</dependency>
 
-		<!-- WebFlux (for Expo Push API HTTP calls) -->
-		<dependency>
-			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-webflux</artifactId>
-		</dependency>
-
 		<!-- Dev Tools -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
