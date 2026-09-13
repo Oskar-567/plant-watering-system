@@ -1,10 +1,11 @@
 package com.plant_watering_system.server.controller;
 
 import com.plant_watering_system.server.dto.InstanceResponse;
+import com.plant_watering_system.server.dto.MoisturePoint;
 import com.plant_watering_system.server.security.JwtAuthFilter;
 import com.plant_watering_system.server.security.JwtTokenProvider;
 import com.plant_watering_system.server.security.SecurityConfig;
-import com.plant_watering_system.server.influx.InfluxQueryService;
+import com.plant_watering_system.server.service.SensorReadingService;
 import com.plant_watering_system.server.service.InstanceService;
 import com.plant_watering_system.server.service.PumpService;
 import org.junit.jupiter.api.Test;
@@ -17,11 +18,16 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -46,7 +52,7 @@ class InstanceControllerTest {
     PumpService pumpService;
 
     @MockitoBean
-    InfluxQueryService influxQueryService;
+    SensorReadingService sensorReadingService;
 
     @Test
     void getAllWithoutTokenReturns401() throws Exception {
@@ -70,5 +76,52 @@ class InstanceControllerTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").value(id.toString()))
                 .andExpect(jsonPath("$.name").value("Balkon"));
+    }
+
+    @Test
+    void getMoistureWithDayRangeReturnsReadings() throws Exception {
+        var id = UUID.randomUUID();
+        given(sensorReadingService.getMoisture(id, Duration.ofDays(7))).willReturn(
+                List.of(new MoisturePoint(Instant.parse("2026-09-13T10:15:00Z"), 1, 55.0))
+        );
+
+        mvc.perform(get("/instances/{id}/moisture", id).param("range", "7d").with(user("test")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].sensorIndex").value(1))
+                .andExpect(jsonPath("$[0].percent").value(55.0));
+    }
+
+    @Test
+    void getMoistureWithMinuteRangeQueriesMinutes() throws Exception {
+        var id = UUID.randomUUID();
+
+        mvc.perform(get("/instances/{id}/moisture", id).param("range", "30m").with(user("test")))
+                .andExpect(status().isOk());
+
+        verify(sensorReadingService).getMoisture(id, Duration.ofMinutes(30));
+    }
+
+    @Test
+    void getBatteryWithoutRangeDefaultsTo24Hours() throws Exception {
+        var id = UUID.randomUUID();
+
+        mvc.perform(get("/instances/{id}/battery", id).with(user("test")))
+                .andExpect(status().isOk());
+
+        verify(sensorReadingService).getBattery(id, Duration.ofHours(24));
+    }
+
+    @Test
+    void getMoistureWithInvalidRangeReturns400() throws Exception {
+        var id = UUID.randomUUID();
+
+        mvc.perform(get("/instances/{id}/moisture", id).param("range", "abc").with(user("test")))
+                .andExpect(status().isBadRequest());
+        mvc.perform(get("/instances/{id}/moisture", id).param("range", "24h)").with(user("test")))
+                .andExpect(status().isBadRequest());
+        mvc.perform(get("/instances/{id}/battery", id).param("range", "0h").with(user("test")))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(sensorReadingService);
     }
 }

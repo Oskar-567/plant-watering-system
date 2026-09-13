@@ -4,12 +4,9 @@
 DB_USERNAME=plant
 DB_PASSWORD=secret
 
-INFLUX_URL=http://localhost:8086
-INFLUX_TOKEN=local-dev-token
-INFLUX_ORG=plantorg
-INFLUX_BUCKET=plant-sensors
-
-JWT_SECRET=bG9jYWxkZXZzZWNyZXRrZXkxMjM0NTY3ODkwYWJjZGVm
+# HMAC signing key for JWTs, used as raw UTF-8 bytes — must be at least 32 characters.
+# Generate a random one, e.g.: openssl rand -base64 48
+JWT_SECRET=change-me-local-dev-jwt-secret-min-32-chars
 APP_PASSWORD=changeme
 
 MQTT_BROKER=192.168.x.x

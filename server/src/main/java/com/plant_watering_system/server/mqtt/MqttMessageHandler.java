@@ -2,10 +2,10 @@ package com.plant_watering_system.server.mqtt;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.plant_watering_system.server.influx.InfluxWriteService;
 import com.plant_watering_system.server.model.Instance;
 import com.plant_watering_system.server.repository.InstanceRepository;
 import com.plant_watering_system.server.service.PumpService;
+import com.plant_watering_system.server.service.SensorReadingService;
 import com.plant_watering_system.server.service.TankEmptyDetectionService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,19 +21,19 @@ public class MqttMessageHandler {
     private static final Logger log = LoggerFactory.getLogger(MqttMessageHandler.class);
 
     private final InstanceRepository instanceRepository;
-    private final InfluxWriteService influxWriteService;
+    private final SensorReadingService sensorReadingService;
     private final PumpService pumpService;
     private final TankEmptyDetectionService tankEmptyDetectionService;
     private final ObjectMapper objectMapper;
 
     public MqttMessageHandler(
             InstanceRepository instanceRepository,
-            InfluxWriteService influxWriteService,
+            SensorReadingService sensorReadingService,
             PumpService pumpService,
             TankEmptyDetectionService tankEmptyDetectionService,
             ObjectMapper objectMapper) {
         this.instanceRepository = instanceRepository;
-        this.influxWriteService = influxWriteService;
+        this.sensorReadingService = sensorReadingService;
         this.pumpService = pumpService;
         this.tankEmptyDetectionService = tankEmptyDetectionService;
         this.objectMapper = objectMapper;
@@ -71,7 +71,7 @@ public class MqttMessageHandler {
                 if (entry.getKey().startsWith("sensor_")) {
                     int index = Integer.parseInt(entry.getKey().substring(7));
                     double percent = ((Number) entry.getValue()).doubleValue();
-                    influxWriteService.writeMoisture(instanceId.toString(), index, percent);
+                    sensorReadingService.recordMoisture(instanceId, index, percent);
                 }
             }
         } catch (Exception e) {
@@ -83,7 +83,6 @@ public class MqttMessageHandler {
         try {
             Map<String, Object> data = objectMapper.readValue(payload, new TypeReference<>() {});
             double liters = ((Number) data.get("liters")).doubleValue();
-            influxWriteService.writeFlow(instanceId.toString(), liters);
             pumpService.recordFlowReceived(instanceId, liters);
             tankEmptyDetectionService.onFlowReceived(instanceId, liters);
         } catch (Exception e) {
@@ -96,7 +95,7 @@ public class MqttMessageHandler {
             Map<String, Object> data = objectMapper.readValue(payload, new TypeReference<>() {});
             double soc = ((Number) data.get("soc")).doubleValue();
             double voltage = ((Number) data.get("voltage")).doubleValue();
-            influxWriteService.writeBattery(instanceId.toString(), soc, voltage);
+            sensorReadingService.recordBattery(instanceId, soc, voltage);
         } catch (Exception e) {
             log.warn("Failed to parse battery payload: {}", payload, e);
         }

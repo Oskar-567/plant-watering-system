@@ -10,20 +10,5 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  influxdb:
-    image: influxdb:2.7
-    environment:
-      DOCKER_INFLUXDB_INIT_MODE: setup
-      DOCKER_INFLUXDB_INIT_USERNAME: admin
-      DOCKER_INFLUXDB_INIT_PASSWORD: adminpassword
-      DOCKER_INFLUXDB_INIT_ORG: plantorg
-      DOCKER_INFLUXDB_INIT_BUCKET: plant-sensors
-      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: local-dev-token
-    ports:
-      - "8086:8086"
-    volumes:
-      - influx_data:/var/lib/influxdb2
-
 volumes:
   postgres_data:
-  influx_data:
