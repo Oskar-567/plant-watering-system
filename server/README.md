@@ -97,8 +97,8 @@ Interactive docs available at `http://localhost:8080/swagger-ui.html` when the s
 | `POST` | `/instances/{id}/pump/start` | Bearer | Start pump — publishes MQTT command, opens WateringEvent |
 | `POST` | `/instances/{id}/pump/stop` | Bearer | Stop pump — publishes MQTT command |
 | `GET` | `/instances/{id}/watering-history` | Bearer | List all watering events descending by start time |
-| `GET` | `/instances/{id}/moisture?range=24h` | Bearer | Soil moisture history (range: 1–999 + m/h/d, default 24h) |
-| `GET` | `/instances/{id}/battery?range=24h` | Bearer | Battery (soc + voltage) history (range: 1–999 + m/h/d, default 24h) |
+| `GET` | `/instances/{id}/moisture?range=24h` | Bearer | Soil moisture history (range: max 30 days, e.g. 30m, 24h, 30d; default 24h) |
+| `GET` | `/instances/{id}/battery?range=24h` | Bearer | Battery (soc + voltage) history (range: max 30 days, e.g. 30m, 24h, 30d; default 24h) |
 
 All endpoints except `/auth/login` require `Authorization: Bearer <token>`.
 

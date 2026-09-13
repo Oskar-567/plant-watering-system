@@ -9,6 +9,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Pattern;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Duration;
 import java.util.List;
@@ -20,6 +21,7 @@ import java.util.UUID;
 public class InstanceController {
 
     private static final String RANGE_PATTERN = "[1-9][0-9]{0,2}[mhd]";
+    private static final Duration MAX_RANGE = Duration.ofDays(30);
 
     private final InstanceService service;
     private final PumpService pumpService;
@@ -81,10 +83,15 @@ public class InstanceController {
     // Input is already validated against RANGE_PATTERN, e.g. "30m", "24h", "7d"
     private static Duration parseRange(String range) {
         long amount = Long.parseLong(range.substring(0, range.length() - 1));
-        return switch (range.charAt(range.length() - 1)) {
+        Duration duration = switch (range.charAt(range.length() - 1)) {
             case 'm' -> Duration.ofMinutes(amount);
             case 'h' -> Duration.ofHours(amount);
-            default -> Duration.ofDays(amount);
+            case 'd' -> Duration.ofDays(amount);
+            default -> throw new IllegalStateException("unreachable: range already validated");
         };
+        if (duration.compareTo(MAX_RANGE) > 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "range must not exceed 30 days");
+        }
+        return duration;
     }
 }
