@@ -1,6 +1,6 @@
 # Plant Watering Server
 
-Spring Boot REST API — central hub of the plant watering system. Receives sensor data from an ESP32 via MQTT, stores it in InfluxDB, manages plant configuration and watering schedules in PostgreSQL, and exposes a REST API for the mobile app.
+Spring Boot REST API — central hub of the plant watering system. Receives sensor data from an ESP32 via MQTT, stores it together with plant configuration and watering history in PostgreSQL, and exposes a REST API for the mobile app.
 
 ## Tech Stack
 
@@ -10,7 +10,6 @@ Spring Boot REST API — central hub of the plant watering system. Receives sens
 | Framework | Spring Boot 4.1.0 |
 | Build | Maven |
 | Relational DB | PostgreSQL (JPA + Flyway) |
-| Time-series DB | InfluxDB 2.x (influxdb-client-java 8.0.0) |
 | Messaging | MQTT via Eclipse Paho (Mosquitto broker) |
 | Auth | Spring Security + JWT (JJWT 0.13.0) |
 | API Docs | SpringDoc OpenAPI (Swagger UI) |
@@ -19,17 +18,17 @@ Spring Boot REST API — central hub of the plant watering system. Receives sens
 ## Architecture
 
 ```
-[ESP32] ──MQTT──> [Mosquitto] ──> [Server] ──> [InfluxDB]
+[ESP32] ──MQTT──> [Mosquitto] ──> [Server] ──> [PostgreSQL]
 [ESP32] <──MQTT── [Mosquitto] <── [Server]
 [React Native App] <──REST──> [Server] <──JPA──> [PostgreSQL]
 ```
 
-The ESP32 publishes sensor readings (soil moisture, flow, battery) via MQTT. The server subscribes to those topics, persists the data in InfluxDB, and serves it to the mobile app via REST. Watering commands flow in the opposite direction: app → server → MQTT → ESP32.
+The ESP32 publishes sensor readings (soil moisture, flow, battery) via MQTT. The server subscribes to those topics, persists the data in PostgreSQL, and serves it to the mobile app via REST. Watering commands flow in the opposite direction: app → server → MQTT → ESP32.
 
 ## Prerequisites
 
 - Java 25
-- Docker Desktop (for local PostgreSQL + InfluxDB)
+- Docker Desktop (for local PostgreSQL)
 - A running Mosquitto broker (see [`infra/apps/mosquitto/`](../k3s-homelab/infra/apps/mosquitto/))
 
 ## Running Locally
@@ -41,12 +40,6 @@ The ESP32 publishes sensor readings (soil moisture, flow, battery) via MQTT. The
 spring.datasource.url=jdbc:postgresql://<host>:5432/plantdb
 DB_USERNAME=plant
 DB_PASSWORD=secret
-
-# InfluxDB
-INFLUX_URL=http://<host>:8086/
-INFLUX_TOKEN=your-token
-INFLUX_ORG=homelab
-INFLUX_BUCKET=plant-sensors
 
 # JWT
 JWT_SECRET=your-secret-min-32-chars
@@ -69,6 +62,17 @@ MQTT_PASSWORD=your-password
 Server starts on `http://localhost:8080`.
 
 > **PowerShell note:** Wrap `-D` flags in quotes, e.g. `"-Dspring-boot.run.profiles=local"`
+
+## Required Setup: Register an Instance
+
+The server silently drops every MQTT message (moisture, flow, battery, status) until a matching `Instance` row exists in Postgres — no error, just `WARN ... No instance found for mqtt prefix: <prefix>` in the logs. No sensor readings are stored, the app has nothing to show, and `TankEmptyDetectionService`/watering-history logging never trigger, even though the ESP32↔MQTT connection itself works fine.
+
+**Before anything else, create an `Instance` for each ESP32** via `POST /instances` (see the login example below). The critical field is `mqttPrefix`:
+
+- It must exactly match the **first path segment** of the topics the ESP32 publishes/subscribes to (`MqttMessageHandler` splits the topic on the first `/` and looks up only that segment).
+- The firmware publishes to topics like `plant/sensors/battery`, `plant/status`, etc. — so `mqttPrefix` must be `"plant"`, **not** `"plant/balcony"` or any other multi-segment value. A multi-segment prefix will never match and messages get dropped exactly like a missing instance.
+
+If sensor data isn't showing up anywhere, check the instance's `mqttPrefix` first before suspecting the database or MQTT connectivity.
 
 ## Key Commands
 
@@ -93,8 +97,8 @@ Interactive docs available at `http://localhost:8080/swagger-ui.html` when the s
 | `POST` | `/instances/{id}/pump/start` | Bearer | Start pump — publishes MQTT command, opens WateringEvent |
 | `POST` | `/instances/{id}/pump/stop` | Bearer | Stop pump — publishes MQTT command |
 | `GET` | `/instances/{id}/watering-history` | Bearer | List all watering events descending by start time |
-| `GET` | `/instances/{id}/moisture?range=24h` | Bearer | Soil moisture history from InfluxDB |
-| `GET` | `/instances/{id}/battery?range=24h` | Bearer | Battery (soc + voltage) history from InfluxDB |
+| `GET` | `/instances/{id}/moisture?range=24h` | Bearer | Soil moisture history (range: 1–999 + m/h/d, default 24h) |
+| `GET` | `/instances/{id}/battery?range=24h` | Bearer | Battery (soc + voltage) history (range: 1–999 + m/h/d, default 24h) |
 
 All endpoints except `/auth/login` require `Authorization: Bearer <token>`.
 
@@ -118,8 +122,10 @@ POST http://localhost:8080/instances
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{"name": "Balcony", "mqttPrefix": "plant/balcony", "hasPump": true, "hasBattery": true, "sensorCount": 1}
+{"name": "Balcony", "mqttPrefix": "plant", "hasPump": true, "hasBattery": true, "sensorCount": 1}
 ```
+
+> `mqttPrefix` is the first segment of the MQTT topics only — see "Required Setup" above. `"plant/balcony"` would silently never match anything.
 
 ## MQTT Topics
 

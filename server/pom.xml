@@ -28,7 +28,6 @@
 	</scm>
 	<properties>
 		<java.version>25</java.version>
-		<influxdb-client.version>8.0.0</influxdb-client.version>
 		<jjwt.version>0.13.0</jjwt.version>
 		<commons-compress.version>1.27.1</commons-compress.version>
 	</properties>
@@ -48,13 +47,6 @@
 			<groupId>org.postgresql</groupId>
 			<artifactId>postgresql</artifactId>
 			<scope>runtime</scope>
-		</dependency>
-
-		<!-- InfluxDB -->
-		<dependency>
-			<groupId>com.influxdb</groupId>
-			<artifactId>influxdb-client-java</artifactId>
-			<version>${influxdb-client.version}</version>
 		</dependency>
 
 		<!-- Security + JWT -->
