@@ -20,6 +20,8 @@ import java.util.UUID;
 @Service
 public class PumpService {
 
+    public static final int MAX_DURATION_SECONDS = 600; // must match MAX_PUMP_RUNTIME_MS in firmware config.h
+
     private final InstanceRepository instanceRepository;
     private final WateringEventRepository wateringEventRepository;
     private final Optional<MqttPublisher> mqttPublisher;
@@ -33,12 +35,13 @@ public class PumpService {
         this.mqttPublisher = mqttPublisher;
     }
 
-    public void start(UUID instanceId) {
+    public void start(UUID instanceId, int durationSeconds) {
         Instance instance = instanceRepository.findById(instanceId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
 
-        mqttPublisher.ifPresent(p ->
-                p.publish(instance.getMqttPrefix() + "/pump/command", "{\"action\":\"start\"}"));
+        mqttPublisher.ifPresent(p -> p.publish(
+                instance.getMqttPrefix() + "/pump/command",
+                "{\"action\":\"start\",\"duration_s\":" + durationSeconds + "}"));
 
         WateringEvent event = new WateringEvent();
         event.setInstanceId(instanceId);

@@ -51,8 +51,8 @@ public class InstanceController {
 
     @PostMapping("/{id}/pump/start")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void pumpStart(@PathVariable UUID id) {
-        pumpService.start(id);
+    public void pumpStart(@PathVariable UUID id, @Valid @RequestBody PumpStartRequest request) {
+        pumpService.start(id, request.durationSeconds());
     }
 
     @PostMapping("/{id}/pump/stop")

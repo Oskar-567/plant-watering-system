@@ -47,13 +47,13 @@ class PumpServiceTest {
     // --- start ---
 
     @Test
-    void start_publishesMqttCommandAndSavesEvent() {
+    void start_publishesMqttCommandWithDurationAndSavesEvent() {
         UUID id = UUID.randomUUID();
         when(instanceRepository.findById(id)).thenReturn(Optional.of(instanceWithPrefix("plant")));
 
-        serviceWithMqtt().start(id);
+        serviceWithMqtt().start(id, 600);
 
-        verify(mqttPublisher).publish("plant/pump/command", "{\"action\":\"start\"}");
+        verify(mqttPublisher).publish("plant/pump/command", "{\"action\":\"start\",\"duration_s\":600}");
 
         ArgumentCaptor<WateringEvent> captor = ArgumentCaptor.forClass(WateringEvent.class);
         verify(wateringEventRepository).save(captor.capture());
@@ -68,7 +68,7 @@ class PumpServiceTest {
         UUID id = UUID.randomUUID();
         when(instanceRepository.findById(id)).thenReturn(Optional.of(instanceWithPrefix("plant")));
 
-        serviceWithoutMqtt().start(id);
+        serviceWithoutMqtt().start(id, 600);
 
         verify(wateringEventRepository).save(any(WateringEvent.class));
         verifyNoInteractions(mqttPublisher);
@@ -79,7 +79,7 @@ class PumpServiceTest {
         UUID id = UUID.randomUUID();
         when(instanceRepository.findById(id)).thenReturn(Optional.empty());
 
-        assertThrows(ResponseStatusException.class, () -> serviceWithMqtt().start(id));
+        assertThrows(ResponseStatusException.class, () -> serviceWithMqtt().start(id, 600));
         verify(wateringEventRepository, never()).save(any());
     }
 
