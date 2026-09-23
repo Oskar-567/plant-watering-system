@@ -28,6 +28,9 @@ public class WateringEvent {
     @Column(name = "triggered_by", length = 50)
     private String triggeredBy;
 
+    @Column(length = 30)
+    private String outcome;
+
     public UUID getId() { return id; }
     public UUID getInstanceId() { return instanceId; }
     public void setInstanceId(UUID instanceId) { this.instanceId = instanceId; }
@@ -39,4 +42,6 @@ public class WateringEvent {
     public void setLiters(BigDecimal liters) { this.liters = liters; }
     public String getTriggeredBy() { return triggeredBy; }
     public void setTriggeredBy(String triggeredBy) { this.triggeredBy = triggeredBy; }
+    public String getOutcome() { return outcome; }
+    public void setOutcome(String outcome) { this.outcome = outcome; }
 }

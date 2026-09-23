@@ -1,0 +1,3 @@
+[env:esp32dev]
+upload_port = 192.168.x.x   ; current LAN IP of the ESP32, for OTA uploads
+upload_flags = --auth=your-ota-password   ; must match OTA_PASSWORD in include/config.h

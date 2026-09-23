@@ -11,5 +11,6 @@ public interface WateringEventRepository extends JpaRepository<WateringEvent, UU
 
     List<WateringEvent> findByInstanceIdOrderByStartedAtDesc(UUID instanceId);
 
-    Optional<WateringEvent> findByInstanceIdAndStoppedAtIsNull(UUID instanceId);
+    Optional<WateringEvent> findFirstByInstanceIdAndTriggeredByAndStoppedAtIsNullOrderByStartedAtDesc(
+            UUID instanceId, String triggeredBy);
 }

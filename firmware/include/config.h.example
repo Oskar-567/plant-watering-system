@@ -10,18 +10,44 @@
 #define MQTT_USER        "mqtt-user"
 #define MQTT_PASSWORD    "mqtt-password"
 #define MQTT_CLIENT_ID   "plant-esp32"
+#define MQTT_KEEPALIVE_SEC 60   // heartbeat interval; keep well below data intervals so a dead link is caught fast
 
 // OTA
 #define OTA_PASSWORD     "ota-password"
 #define OTA_HOSTNAME     "plant-esp32"
 
+// CPU frequency -- static reduction from the 240 MHz default (see CLAUDE.md
+// for why Automatic Light Sleep isn't available on this core)
+#define CPU_FREQ_MHZ 80
+
 // Pump relay
 #define RELAY_PIN        26
 #define RELAY_ACTIVE_LOW true   // true for most relay modules (LOW = on)
 
+// Pump safety (independent of MQTT -- protects against a lost/missed stop command)
+#define MAX_PUMP_RUNTIME_MS     600000UL  // hard cutoff: pump never runs longer than this (10 min)
+#define FLOW_CHECK_INTERVAL_MS  30000UL   // how often to sample flow while pump runs
+#define FLOW_STALL_THRESHOLD_L  0.3f      // min. liters expected per interval -- tune to your pump's nominal flow
+
+// Pump battery protection (local, no MQTT round-trip). The shared 18650 sags
+// under pump load; below these values WiFi drops and stop commands get lost.
+// Tune with the min_voltage reported in plant/diag pump_stop events.
+#define PUMP_MIN_START_SOC             20.0f   // refuse start below this SOC (%)
+#define PUMP_MIN_START_VOLTAGE         3.60f   // refuse start below this cell voltage (V)
+#define PUMP_MIN_RUN_VOLTAGE           3.30f   // stop if voltage under load stays below this (V) ...
+#define PUMP_LOW_VOLTAGE_SAMPLES       3       // ... for this many consecutive checks
+#define PUMP_VOLTAGE_CHECK_INTERVAL_MS 1000UL  // voltage check interval while pumping
+
+// Watchdog: reboot (relay released) if loop() hangs longer than this.
+// Must stay above the longest legit block in loop() (MQTT connect: up to ~18 s).
+#define WATCHDOG_TIMEOUT_S 30
+
 // YSF201 flow meter
 #define FLOW_METER_PIN   27
 #define PULSES_PER_LITER 450    // calibrate for your sensor
+#define FLOW_DEBOUNCE_US 20000UL // min. time between counted pulses -- filters pump-motor noise.
+                                  // Tune per sensor/wiring: stay well below your real pulse interval
+                                  // (pulses/liter * L/min / 60 gives Hz) but high enough to reject EMI bursts.
 
 // Moisture sensors (capacitive, analog)
 #define SENSOR_COUNT         3
@@ -30,8 +56,8 @@
 #define MOISTURE_WET_INIT    {1400, 1380, 1420}  // ADC reading in saturated soil
 
 // Reporting intervals (milliseconds)
-#define SENSOR_INTERVAL_MS   60000UL
-#define BATTERY_INTERVAL_MS  300000UL
+#define SENSOR_INTERVAL_MS   900000UL
+#define BATTERY_INTERVAL_MS  900000UL
 
 // Battery warning threshold (percent)
 #define BATTERY_LOW_THRESHOLD 20

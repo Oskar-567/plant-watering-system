@@ -44,16 +44,24 @@ class PumpServiceTest {
         return i;
     }
 
+    private WateringEvent openEvent(UUID instanceId, String triggeredBy) {
+        WateringEvent e = new WateringEvent();
+        e.setInstanceId(instanceId);
+        e.setStartedAt(OffsetDateTime.now().minusSeconds(30));
+        e.setTriggeredBy(triggeredBy);
+        return e;
+    }
+
     // --- start ---
 
     @Test
-    void start_publishesMqttCommandAndSavesEvent() {
+    void start_publishesMqttCommandWithDurationAndSavesEvent() {
         UUID id = UUID.randomUUID();
         when(instanceRepository.findById(id)).thenReturn(Optional.of(instanceWithPrefix("plant")));
 
-        serviceWithMqtt().start(id);
+        serviceWithMqtt().start(id, 600);
 
-        verify(mqttPublisher).publish("plant/pump/command", "{\"action\":\"start\"}");
+        verify(mqttPublisher).publish("plant/pump/command", "{\"action\":\"start\",\"duration_s\":600}");
 
         ArgumentCaptor<WateringEvent> captor = ArgumentCaptor.forClass(WateringEvent.class);
         verify(wateringEventRepository).save(captor.capture());
@@ -68,7 +76,7 @@ class PumpServiceTest {
         UUID id = UUID.randomUUID();
         when(instanceRepository.findById(id)).thenReturn(Optional.of(instanceWithPrefix("plant")));
 
-        serviceWithoutMqtt().start(id);
+        serviceWithoutMqtt().start(id, 600);
 
         verify(wateringEventRepository).save(any(WateringEvent.class));
         verifyNoInteractions(mqttPublisher);
@@ -79,7 +87,7 @@ class PumpServiceTest {
         UUID id = UUID.randomUUID();
         when(instanceRepository.findById(id)).thenReturn(Optional.empty());
 
-        assertThrows(ResponseStatusException.class, () -> serviceWithMqtt().start(id));
+        assertThrows(ResponseStatusException.class, () -> serviceWithMqtt().start(id, 600));
         verify(wateringEventRepository, never()).save(any());
     }
 
@@ -106,31 +114,133 @@ class PumpServiceTest {
     // --- recordFlowReceived ---
 
     @Test
-    void recordFlowReceived_closesOpenEvent() {
+    void recordFlowReceived_setsLitersOnOpenEventWithoutClosingIt() {
         UUID id = UUID.randomUUID();
-        WateringEvent openEvent = new WateringEvent();
-        openEvent.setInstanceId(id);
-        openEvent.setStartedAt(OffsetDateTime.now().minusSeconds(30));
+        WateringEvent open = openEvent(id, "schedule");
+        when(wateringEventRepository.findFirstByInstanceIdAndTriggeredByAndStoppedAtIsNullOrderByStartedAtDesc(id, "schedule"))
+                .thenReturn(Optional.of(open));
 
-        when(wateringEventRepository.findByInstanceIdAndStoppedAtIsNull(id))
-                .thenReturn(Optional.of(openEvent));
+        serviceWithMqtt().recordFlowReceived(id, 0.35, "schedule");
 
-        serviceWithMqtt().recordFlowReceived(id, 0.35);
+        verify(wateringEventRepository).save(open);
+        assertEquals(BigDecimal.valueOf(0.35), open.getLiters());
+        assertNull(open.getStoppedAt());
+    }
 
-        ArgumentCaptor<WateringEvent> captor = ArgumentCaptor.forClass(WateringEvent.class);
-        verify(wateringEventRepository).save(captor.capture());
-        WateringEvent saved = captor.getValue();
-        assertNotNull(saved.getStoppedAt());
-        assertEquals(BigDecimal.valueOf(0.35), saved.getLiters());
+    @Test
+    void recordFlowReceived_withoutTrigger_usesManualEvent() {
+        UUID id = UUID.randomUUID();
+        WateringEvent open = openEvent(id, "app");
+        when(wateringEventRepository.findFirstByInstanceIdAndTriggeredByAndStoppedAtIsNullOrderByStartedAtDesc(id, "app"))
+                .thenReturn(Optional.of(open));
+
+        serviceWithMqtt().recordFlowReceived(id, 0.35, null);
+
+        assertEquals(BigDecimal.valueOf(0.35), open.getLiters());
     }
 
     @Test
     void recordFlowReceived_noOpenEvent_doesNothing() {
         UUID id = UUID.randomUUID();
-        when(wateringEventRepository.findByInstanceIdAndStoppedAtIsNull(id))
+        when(wateringEventRepository.findFirstByInstanceIdAndTriggeredByAndStoppedAtIsNullOrderByStartedAtDesc(id, "app"))
                 .thenReturn(Optional.empty());
 
-        serviceWithMqtt().recordFlowReceived(id, 0.35);
+        serviceWithMqtt().recordFlowReceived(id, 0.35, "manual");
+
+        verify(wateringEventRepository, never()).save(any());
+    }
+
+    // --- recordPumpStatus ---
+
+    private static final long TS = 1757764800L;
+
+    @Test
+    void recordPumpStatus_offManual_closesOpenAppEventWithOutcome() {
+        UUID id = UUID.randomUUID();
+        WateringEvent open = openEvent(id, "app");
+        when(wateringEventRepository.findFirstByInstanceIdAndTriggeredByAndStoppedAtIsNullOrderByStartedAtDesc(id, "app"))
+                .thenReturn(Optional.of(open));
+
+        serviceWithMqtt().recordPumpStatus(id, "off", "manual", "completed", TS);
+
+        verify(wateringEventRepository).save(open);
+        assertEquals("completed", open.getOutcome());
+        assertEquals(TS, open.getStoppedAt().toEpochSecond());
+    }
+
+    @Test
+    void recordPumpStatus_withoutTimestamp_usesReceiveTime() {
+        UUID id = UUID.randomUUID();
+        WateringEvent open = openEvent(id, "app");
+        when(wateringEventRepository.findFirstByInstanceIdAndTriggeredByAndStoppedAtIsNullOrderByStartedAtDesc(id, "app"))
+                .thenReturn(Optional.of(open));
+
+        serviceWithMqtt().recordPumpStatus(id, "off", null, null, 0L);
+
+        assertNotNull(open.getStoppedAt());
+        assertTrue(open.getStoppedAt().isAfter(OffsetDateTime.now().minusSeconds(5)));
+        assertNull(open.getOutcome());
+    }
+
+    @Test
+    void recordPumpStatus_rejectedBusy_closesOpenAppEvent() {
+        UUID id = UUID.randomUUID();
+        WateringEvent open = openEvent(id, "app");
+        when(wateringEventRepository.findFirstByInstanceIdAndTriggeredByAndStoppedAtIsNullOrderByStartedAtDesc(id, "app"))
+                .thenReturn(Optional.of(open));
+
+        serviceWithMqtt().recordPumpStatus(id, "rejected", "manual", "busy", TS);
+
+        assertEquals("busy", open.getOutcome());
+        assertNotNull(open.getStoppedAt());
+    }
+
+    @Test
+    void recordPumpStatus_onSchedule_createsOpenScheduleEvent() {
+        UUID id = UUID.randomUUID();
+
+        serviceWithMqtt().recordPumpStatus(id, "on", "schedule", null, TS);
+
+        ArgumentCaptor<WateringEvent> captor = ArgumentCaptor.forClass(WateringEvent.class);
+        verify(wateringEventRepository).save(captor.capture());
+        WateringEvent saved = captor.getValue();
+        assertEquals(id, saved.getInstanceId());
+        assertEquals("schedule", saved.getTriggeredBy());
+        assertEquals(TS, saved.getStartedAt().toEpochSecond());
+        assertNull(saved.getStoppedAt());
+    }
+
+    @Test
+    void recordPumpStatus_onManual_createsNothing() {
+        serviceWithMqtt().recordPumpStatus(UUID.randomUUID(), "on", "manual", null, TS);
+
+        verify(wateringEventRepository, never()).save(any());
+    }
+
+    @Test
+    void recordPumpStatus_missedScheduleWithoutOpenEvent_createsClosedEvent() {
+        UUID id = UUID.randomUUID();
+        when(wateringEventRepository.findFirstByInstanceIdAndTriggeredByAndStoppedAtIsNullOrderByStartedAtDesc(id, "schedule"))
+                .thenReturn(Optional.empty());
+
+        serviceWithMqtt().recordPumpStatus(id, "rejected", "schedule", "missed", TS);
+
+        ArgumentCaptor<WateringEvent> captor = ArgumentCaptor.forClass(WateringEvent.class);
+        verify(wateringEventRepository).save(captor.capture());
+        WateringEvent saved = captor.getValue();
+        assertEquals("schedule", saved.getTriggeredBy());
+        assertEquals("missed", saved.getOutcome());
+        assertEquals(TS, saved.getStartedAt().toEpochSecond());
+        assertEquals(TS, saved.getStoppedAt().toEpochSecond());
+    }
+
+    @Test
+    void recordPumpStatus_offManualWithoutOpenEvent_doesNothing() {
+        UUID id = UUID.randomUUID();
+        when(wateringEventRepository.findFirstByInstanceIdAndTriggeredByAndStoppedAtIsNullOrderByStartedAtDesc(id, "app"))
+                .thenReturn(Optional.empty());
+
+        serviceWithMqtt().recordPumpStatus(id, "off", "manual", "command", TS);
 
         verify(wateringEventRepository, never()).save(any());
     }
@@ -146,6 +256,7 @@ class PumpServiceTest {
         event.setStoppedAt(OffsetDateTime.now());
         event.setLiters(BigDecimal.valueOf(1.5));
         event.setTriggeredBy("app");
+        event.setOutcome("completed");
 
         when(wateringEventRepository.findByInstanceIdOrderByStartedAtDesc(id))
                 .thenReturn(List.of(event));
@@ -157,6 +268,7 @@ class PumpServiceTest {
         assertEquals(BigDecimal.valueOf(1.5), response.liters());
         assertNotNull(response.durationSeconds());
         assertTrue(response.durationSeconds() >= 59);
+        assertEquals("completed", response.outcome());
     }
 
     @Test

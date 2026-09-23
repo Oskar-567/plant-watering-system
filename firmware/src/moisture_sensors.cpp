@@ -1,5 +1,6 @@
 #include "moisture_sensors.h"
 #include <algorithm>
+#include "log.h"
 
 static const uint8_t PINS[SENSOR_COUNT] = MOISTURE_PINS_INIT;
 static const int     DRY[SENSOR_COUNT]  = MOISTURE_DRY_INIT;
@@ -16,7 +17,7 @@ void MoistureSensors::read() {
     for (uint8_t i = 0; i < SENSOR_COUNT; i++) {
         int raw = readMedian(PINS[i]);
         _values[i] = rawToPercent(raw, DRY[i], WET[i]);
-        Serial.printf("Moisture sensor %u: raw=%d -> %d%%\n", i, raw, _values[i]);
+        LOG_DEBUG("Moisture sensor %u: raw=%d -> %d%%", i, raw, _values[i]);
     }
 }
 

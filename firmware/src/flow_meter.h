@@ -11,6 +11,7 @@ public:
 private:
     static void IRAM_ATTR onPulse();
     static volatile uint32_t _pulseCount;
+    static volatile uint32_t _lastPulseUs;
 };
 
 extern FlowMeter flowMeter;

@@ -80,6 +80,34 @@ class InstanceControllerTest {
     }
 
     @Test
+    void pumpStartWithDurationReturns204() throws Exception {
+        var id = UUID.randomUUID();
+
+        mvc.perform(post("/instances/{id}/pump/start", id)
+                        .with(user("test"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"durationSeconds\":600}"))
+                .andExpect(status().isNoContent());
+
+        verify(pumpService).start(id, 600);
+    }
+
+    @Test
+    void pumpStartWithMissingOrOutOfRangeDurationReturns400() throws Exception {
+        var id = UUID.randomUUID();
+
+        for (String body : List.of("{}", "{\"durationSeconds\":0}", "{\"durationSeconds\":601}")) {
+            mvc.perform(post("/instances/{id}/pump/start", id)
+                            .with(user("test"))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body))
+                    .andExpect(status().isBadRequest());
+        }
+
+        verifyNoInteractions(pumpService);
+    }
+
+    @Test
     void getMoistureWithDayRangeReturnsReadings() throws Exception {
         var id = UUID.randomUUID();
         given(sensorReadingService.getMoisture(id, Duration.ofDays(7))).willReturn(
