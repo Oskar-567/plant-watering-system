@@ -11,6 +11,7 @@
 #include "battery_monitor.h"
 #include "ota_handler.h"
 #include "diagnostics.h"
+#include "time_keeper.h"
 #include "log.h"
 #include "../include/config.h"
 
@@ -115,6 +116,7 @@ void setup() {
     batteryMonitor.begin();
     diagnostics.begin();
     wifiManager.begin();
+    timeKeeper.begin(DEFAULT_TZ);  // after WiFi init -- see time_keeper.h
     mqttClient.setMessageCallback(onMqttMessage);
     mqttClient.setConnectCallback([]() {
         diagnostics.publishConnected();

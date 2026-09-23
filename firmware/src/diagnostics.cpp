@@ -1,6 +1,7 @@
 #include "diagnostics.h"
 #include "mqtt_client.h"
 #include "battery_monitor.h"
+#include "time_keeper.h"
 #include <WiFi.h>
 #include <esp_system.h>
 #include "log.h"
@@ -62,10 +63,10 @@ void Diagnostics::publishConnected() {
     snprintf(payload, sizeof(payload),
              "{\"event\":\"connected\",\"reset_reason\":\"%s\",\"uptime_s\":%lu,"
              "\"wifi_drops\":%u,\"wifi_drop_reason\":%u,\"wifi_last_drop_s\":%lu,"
-             "\"mqtt_connects\":%u,\"rssi\":%d,\"voltage\":%.2f}",
+             "\"mqtt_connects\":%u,\"rssi\":%d,\"voltage\":%.2f,\"clock_valid\":%s}",
              resetReason, millis() / 1000UL,
              wifiDrops, wifiLastDropReason, (unsigned long)wifiLastDropS,
-             _mqttConnects, WiFi.RSSI(), voltage);
+             _mqttConnects, WiFi.RSSI(), voltage, timeKeeper.isValid() ? "true" : "false");
     // Direct publish (just connected): longer than a queue slot, and it
     // should go out before any stop reports queued during the outage.
     mqttClient.publish("plant/diag", payload);

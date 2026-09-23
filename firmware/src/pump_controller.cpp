@@ -2,6 +2,7 @@
 #include "flow_meter.h"
 #include "mqtt_client.h"
 #include "battery_monitor.h"
+#include "time_keeper.h"
 #include "log.h"
 
 static const char* triggerName(PumpTrigger trigger) {
@@ -148,7 +149,7 @@ void PumpController::publishStatus(const char* pump, PumpTrigger trigger, const 
     if (strcmp(pump, "on") == 0) {
         n += snprintf(payload + n, sizeof(payload) - n, ",\"duration_s\":%lu", _durationMs / 1000UL);
     }
-    snprintf(payload + n, sizeof(payload) - n, "}");
+    snprintf(payload + n, sizeof(payload) - n, ",\"ts\":%lu}", (unsigned long)timeKeeper.now());
     mqttClient.publishQueued("plant/status", payload);
 }
 
