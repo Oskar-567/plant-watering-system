@@ -20,6 +20,11 @@ void BatteryMonitor::read() {
     Serial.printf("Battery: %.1f%%, %.2fV\n", _soc, _voltage);
 }
 
+float BatteryMonitor::sampleVoltage() {
+    _voltage = lipo.getVoltage();
+    return _voltage;
+}
+
 float BatteryMonitor::getSOC() const     { return _soc; }
 float BatteryMonitor::getVoltage() const { return _voltage; }
 
