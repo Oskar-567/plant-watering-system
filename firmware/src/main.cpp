@@ -5,11 +5,14 @@
 #include "wifi_manager.h"
 #include "mqtt_client.h"
 #include "pump_controller.h"
+#include "pump_command.h"
 #include "flow_meter.h"
 #include "moisture_sensors.h"
 #include "battery_monitor.h"
 #include "ota_handler.h"
 #include "diagnostics.h"
+#include "time_keeper.h"
+#include "watering_scheduler.h"
 #include "log.h"
 #include "../include/config.h"
 
@@ -41,11 +44,26 @@ static void onMqttMessage(const char* topic, const char* payload) {
         }
         return;
     }
+    if (strcmp(topic, "plant/schedule") == 0) {
+        wateringScheduler.onScheduleMessage(payload);
+        return;
+    }
     if (strcmp(topic, "plant/pump/command") != 0) return;
-    if (strstr(payload, "start")) {
-        pumpController.start();
-    } else if (strstr(payload, "stop")) {
-        pumpController.stop();
+
+    // topic points into PubSubClient's buffer, which any publish below
+    // overwrites -- never read it after dispatching.
+    PumpCommand cmd = parsePumpCommand(payload, MAX_PUMP_RUNTIME_MS / 1000UL);
+    switch (cmd.action) {
+        case PumpAction::Start:
+            pumpController.start(cmd.durationS, PumpTrigger::Manual);
+            break;
+        case PumpAction::Stop:
+            pumpController.stop("command");
+            break;
+        case PumpAction::Invalid:
+            LOG_WARN("MQTT: ignoring invalid pump command: %s", payload);
+            mqttClient.publishQueued("plant/diag", "{\"event\":\"invalid_command\"}");
+            break;
     }
 }
 
@@ -101,8 +119,10 @@ void setup() {
     flowMeter.begin();
     moistureSensors.begin();
     batteryMonitor.begin();
+    wateringScheduler.begin();
     diagnostics.begin();
     wifiManager.begin();
+    timeKeeper.begin(wateringScheduler.timezone());  // after WiFi init -- see time_keeper.h
     mqttClient.setMessageCallback(onMqttMessage);
     mqttClient.setConnectCallback([]() {
         diagnostics.publishConnected();
@@ -132,6 +152,7 @@ void loop() {
     mqttClient.update();
     otaHandler.handle();
     pumpController.update();
+    wateringScheduler.update();
 
     unsigned long now = millis();
 

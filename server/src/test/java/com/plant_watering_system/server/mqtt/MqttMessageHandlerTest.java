@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.plant_watering_system.server.model.Instance;
 import com.plant_watering_system.server.repository.InstanceRepository;
 import com.plant_watering_system.server.service.PumpService;
+import com.plant_watering_system.server.service.ScheduleService;
 import com.plant_watering_system.server.service.SensorReadingService;
 import com.plant_watering_system.server.service.TankEmptyDetectionService;
 import org.junit.jupiter.api.Test;
@@ -23,12 +24,14 @@ class MqttMessageHandlerTest {
     @Mock SensorReadingService sensorReadingService;
     @Mock PumpService pumpService;
     @Mock TankEmptyDetectionService tankEmptyDetectionService;
+    @Mock ScheduleService scheduleService;
 
     private final UUID instanceId = UUID.randomUUID();
 
     private MqttMessageHandler handler() {
         return new MqttMessageHandler(
-                instanceRepository, sensorReadingService, pumpService, tankEmptyDetectionService, new ObjectMapper());
+                instanceRepository, sensorReadingService, pumpService, tankEmptyDetectionService,
+                scheduleService, new ObjectMapper());
     }
 
     // Instance has no setId (id is generated), so a mock provides the id
@@ -116,6 +119,16 @@ class MqttMessageHandlerTest {
 
         handler().handle("unknown/sensors/moisture", "{\"sensor_0\":42}");
 
-        verifyNoInteractions(sensorReadingService, pumpService, tankEmptyDetectionService);
+        verifyNoInteractions(sensorReadingService, pumpService, tankEmptyDetectionService, scheduleService);
+    }
+
+    @Test
+    void scheduleAck_recordsAcknowledgedVersion() {
+        givenInstanceWithPrefix("plant");
+
+        handler().handle("plant/schedule/ack", "{\"version\":7}");
+
+        verify(scheduleService).recordAck(instanceId, 7);
+        verifyNoInteractions(pumpService, sensorReadingService, tankEmptyDetectionService);
     }
 }

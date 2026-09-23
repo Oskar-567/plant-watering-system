@@ -42,6 +42,13 @@
 // Must stay above the longest legit block in loop() (MQTT connect: up to ~18 s).
 #define WATCHDOG_TIMEOUT_S 30
 
+// Clock (NTP only, no RTC) -- without a valid clock the schedule does not run
+#define NTP_SERVER  "pool.ntp.org"
+#define DEFAULT_TZ  "CET-1CEST,M3.5.0,M10.5.0/3"   // POSIX TZ until a schedule brings its own
+
+// Watering schedule (received retained on plant/schedule, executed locally)
+#define SCHEDULE_CATCHUP_WINDOW_S 1800UL  // run an entry if at most this late, else report "missed"
+
 // YSF201 flow meter
 #define FLOW_METER_PIN   27
 #define PULSES_PER_LITER 450    // calibrate for your sensor

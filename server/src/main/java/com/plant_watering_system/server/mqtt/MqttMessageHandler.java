@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.plant_watering_system.server.model.Instance;
 import com.plant_watering_system.server.repository.InstanceRepository;
 import com.plant_watering_system.server.service.PumpService;
+import com.plant_watering_system.server.service.ScheduleService;
 import com.plant_watering_system.server.service.SensorReadingService;
 import com.plant_watering_system.server.service.TankEmptyDetectionService;
 import org.slf4j.Logger;
@@ -24,6 +25,7 @@ public class MqttMessageHandler {
     private final SensorReadingService sensorReadingService;
     private final PumpService pumpService;
     private final TankEmptyDetectionService tankEmptyDetectionService;
+    private final ScheduleService scheduleService;
     private final ObjectMapper objectMapper;
 
     public MqttMessageHandler(
@@ -31,11 +33,13 @@ public class MqttMessageHandler {
             SensorReadingService sensorReadingService,
             PumpService pumpService,
             TankEmptyDetectionService tankEmptyDetectionService,
+            ScheduleService scheduleService,
             ObjectMapper objectMapper) {
         this.instanceRepository = instanceRepository;
         this.sensorReadingService = sensorReadingService;
         this.pumpService = pumpService;
         this.tankEmptyDetectionService = tankEmptyDetectionService;
+        this.scheduleService = scheduleService;
         this.objectMapper = objectMapper;
     }
 
@@ -60,6 +64,7 @@ public class MqttMessageHandler {
             case "sensors/flow"     -> handleFlow(instanceId, payload);
             case "sensors/battery"  -> handleBattery(instanceId, payload);
             case "status"           -> handleStatus(instanceId, payload);
+            case "schedule/ack"     -> handleScheduleAck(instanceId, payload);
             default -> log.warn("Unknown topic suffix: {}", suffix);
         }
     }
@@ -116,6 +121,16 @@ public class MqttMessageHandler {
                     instanceId, pumpStatus, (String) data.get("trigger"), (String) data.get("reason"), ts);
         } catch (Exception e) {
             log.warn("Failed to parse status payload: {}", payload, e);
+        }
+    }
+
+    private void handleScheduleAck(UUID instanceId, String payload) {
+        try {
+            Map<String, Object> data = objectMapper.readValue(payload, new TypeReference<>() {});
+            int version = ((Number) data.get("version")).intValue();
+            scheduleService.recordAck(instanceId, version);
+        } catch (Exception e) {
+            log.warn("Failed to parse schedule ack payload: {}", payload, e);
         }
     }
 }

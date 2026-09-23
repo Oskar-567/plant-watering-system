@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -21,6 +22,7 @@ public class MqttClientManager implements MqttCallbackExtended {
     private final MqttMessageHandler messageHandler;
     private final String username;
     private final String password;
+    private final ApplicationEventPublisher eventPublisher;
 
     public MqttClientManager(
             @Value("${mqtt.broker}") String broker,
@@ -28,7 +30,8 @@ public class MqttClientManager implements MqttCallbackExtended {
             @Value("${mqtt.client-id}") String clientId,
             @Value("${mqtt.username:}") String username,
             @Value("${mqtt.password:}") String password,
-            @Lazy MqttMessageHandler messageHandler) {
+            @Lazy MqttMessageHandler messageHandler,
+            ApplicationEventPublisher eventPublisher) {
         try {
             this.client = new MqttClient("tcp://" + broker + ":" + port, clientId, new MemoryPersistence());
         } catch (MqttException e) {
@@ -37,6 +40,7 @@ public class MqttClientManager implements MqttCallbackExtended {
         this.messageHandler = messageHandler;
         this.username = username;
         this.password = password;
+        this.eventPublisher = eventPublisher;
     }
 
     @PostConstruct
@@ -57,10 +61,12 @@ public class MqttClientManager implements MqttCallbackExtended {
         try {
             client.subscribe("+/sensors/#", 1);
             client.subscribe("+/status", 1);
+            client.subscribe("+/schedule/ack", 1);
             log.info("MQTT {} {}", reconnect ? "reconnected to" : "connected to", serverURI);
         } catch (MqttException e) {
             log.error("Failed to subscribe after connect", e);
         }
+        eventPublisher.publishEvent(new MqttConnectedEvent());
     }
 
     @Override

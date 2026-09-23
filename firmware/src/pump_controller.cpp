@@ -1,38 +1,49 @@
 #include "pump_controller.h"
 #include "flow_meter.h"
 #include "mqtt_client.h"
-#include "wifi_manager.h"
 #include "battery_monitor.h"
+#include "time_keeper.h"
 #include "log.h"
+
+static const char* triggerName(PumpTrigger trigger) {
+    return trigger == PumpTrigger::Schedule ? "schedule" : "manual";
+}
 
 void PumpController::begin() {
     pinMode(RELAY_PIN, OUTPUT);
     setRelay(false);
 }
 
-void PumpController::start() {
-    if (_running) return;
+bool PumpController::start(uint32_t durationS, PumpTrigger trigger) {
+    if (_running) {
+        LOG_WARN("Pump: %s start ignored, already running", triggerName(trigger));
+        publishStatus("rejected", trigger, "busy");
+        return false;
+    }
 
     // Fresh reading -- the periodic one can be up to BATTERY_INTERVAL_MS old.
     batteryMonitor.read();
     float voltage = batteryMonitor.getVoltage();
     float soc     = batteryMonitor.getSOC();
     if (!batteryAllowsPumpStart(voltage, soc, PUMP_MIN_START_VOLTAGE, PUMP_MIN_START_SOC)) {
-        LOG_WARN("Pump: start refused, battery too low (%.2fV, %.1f%%)", voltage, soc);
-        mqttClient.publishQueued("plant/status", "{\"pump\":\"off\",\"reason\":\"low_battery\"}");
+        LOG_WARN("Pump: %s start refused, battery too low (%.2fV, %.1f%%)",
+                 triggerName(trigger), voltage, soc);
+        publishStatus("rejected", trigger, "low_battery");
         char diag[96];
         snprintf(diag, sizeof(diag),
                  "{\"event\":\"pump_start_refused\",\"voltage\":%.2f,\"soc\":%.1f}", voltage, soc);
         mqttClient.publishQueued("plant/diag", diag);
-        return;
+        return false;
     }
     if (!isPlausibleCellVoltage(voltage)) {
         LOG_WARN("Pump: no valid fuel gauge reading -- running without battery protection");
     }
 
     _running = true;
+    _trigger = trigger;
     flowMeter.resetCount();
     _startMs = millis();
+    _durationMs = durationS * 1000UL;
     _lastFlowCheckMs = _startMs;
     _litersAtLastCheck = 0.0f;
     _lastVoltageCheckMs = _startMs;
@@ -40,39 +51,37 @@ void PumpController::start() {
     trackMinVoltage(voltage);
     _lowVoltage.reset();
     setRelay(true);
-    mqttClient.publishQueued("plant/status", "{\"pump\":\"on\"}");
-    LOG_INFO("Pump: started");
+    publishStatus("on", trigger, nullptr);
+    LOG_INFO("Pump: started (%s, %lus)", triggerName(trigger), (unsigned long)durationS);
+    return true;
 }
 
-void PumpController::stop() {
-    stopWithReason(nullptr);
-}
-
-void PumpController::stopWithReason(const char* reason) {
+void PumpController::stop(const char* reason) {
     if (!_running) return;
     _running = false;
     setRelay(false);
 
-    // Queued: after a link_lost stop these go out once MQTT is back, so the
-    // server still learns the pump is off and how much was dispensed.
-    char payload[32];
-    snprintf(payload, sizeof(payload), "{\"liters\":%.3f}", flowMeter.getLiters());
-    mqttClient.publishQueued("plant/sensors/flow", payload);
+    // Queued: if the link is down these go out after reconnect, so the server
+    // still learns the run ended and how much was dispensed. Flow first --
+    // the server closes the event on "off".
+    char flow[64];
+    snprintf(flow, sizeof(flow), "{\"liters\":%.3f,\"trigger\":\"%s\"}",
+             flowMeter.getLiters(), triggerName(_trigger));
+    mqttClient.publishQueued("plant/sensors/flow", flow);
+    publishStatus("off", _trigger, reason);
 
-    if (reason) {
-        char statusPayload[64];
-        snprintf(statusPayload, sizeof(statusPayload), "{\"pump\":\"off\",\"reason\":\"%s\"}", reason);
-        mqttClient.publishQueued("plant/status", statusPayload);
-        LOG_WARN("Pump: emergency stop (%s), %s dispensed", reason, payload);
+    // Planned ends are info; safety cutoffs stay warnings.
+    bool planned = strcmp(reason, "completed") == 0 || strcmp(reason, "command") == 0;
+    if (planned) {
+        LOG_INFO("Pump: stopped (%s, %s), %s", triggerName(_trigger), reason, flow);
     } else {
-        mqttClient.publishQueued("plant/status", "{\"pump\":\"off\"}");
-        LOG_INFO("Pump: stopped, %s dispensed", payload);
+        LOG_WARN("Pump: emergency stop (%s, %s), %s", triggerName(_trigger), reason, flow);
     }
 
     char diag[128];
     snprintf(diag, sizeof(diag),
              "{\"event\":\"pump_stop\",\"reason\":\"%s\",\"runtime_s\":%lu,\"min_voltage\":%.2f}",
-             reason ? reason : "command", (millis() - _startMs) / 1000UL, _minVoltage);
+             reason, (millis() - _startMs) / 1000UL, _minVoltage);
     mqttClient.publishQueued("plant/diag", diag);
 }
 
@@ -80,17 +89,19 @@ void PumpController::update() {
     if (!_running) return;
     unsigned long now = millis();
 
-    // No link = a stop command can't reach us. Stop now instead of running
-    // blind until max runtime (e.g. WiFi collapsing from supply sag).
-    if (!wifiManager.isConnected() || !mqttClient.isConnected()) {
-        LOG_WARN("Pump: WiFi/MQTT link lost while pumping, stopping");
-        stopWithReason("link_lost");
+    // No link-loss cutoff any more: every run is bounded by its duration, and
+    // schedule runs must keep going through a WiFi outage.
+
+    // Before max runtime, so a run of exactly MAX_PUMP_RUNTIME_MS ends as "completed".
+    if (now - _startMs >= _durationMs) {
+        stop("completed");
         return;
     }
 
+    // Last line of defence -- durations are already validated <= max.
     if (now - _startMs >= MAX_PUMP_RUNTIME_MS) {
-        LOG_WARN("Pump: max runtime exceeded, stopping (MQTT stop command may be lost)");
-        stopWithReason("max_runtime");
+        LOG_WARN("Pump: max runtime exceeded, stopping");
+        stop("max_runtime");
         return;
     }
 
@@ -100,8 +111,8 @@ void PumpController::update() {
         trackMinVoltage(voltage);
         if (_lowVoltage.addSample(voltage)) {
             LOG_WARN("Pump: battery sagging under load (%.2fV < %.2fV), stopping",
-                          voltage, PUMP_MIN_RUN_VOLTAGE);
-            stopWithReason("low_battery");
+                     voltage, PUMP_MIN_RUN_VOLTAGE);
+            stop("low_battery");
             return;
         }
     }
@@ -114,8 +125,8 @@ void PumpController::update() {
 
         if (delta < FLOW_STALL_THRESHOLD_L) {
             LOG_WARN("Pump: flow stall (%.3f L in last %lus) -- empty tank or blockage?",
-                          delta, FLOW_CHECK_INTERVAL_MS / 1000UL);
-            stopWithReason("flow_stall");
+                     delta, FLOW_CHECK_INTERVAL_MS / 1000UL);
+            stop("flow_stall");
         }
     }
 }
@@ -126,6 +137,20 @@ bool PumpController::isRunning() const {
 
 void PumpController::setRelay(bool on) {
     digitalWrite(RELAY_PIN, (RELAY_ACTIVE_LOW ? !on : on) ? HIGH : LOW);
+}
+
+void PumpController::publishStatus(const char* pump, PumpTrigger trigger, const char* reason) {
+    char payload[128];
+    int n = snprintf(payload, sizeof(payload), "{\"pump\":\"%s\",\"trigger\":\"%s\"",
+                     pump, triggerName(trigger));
+    if (reason) {
+        n += snprintf(payload + n, sizeof(payload) - n, ",\"reason\":\"%s\"", reason);
+    }
+    if (strcmp(pump, "on") == 0) {
+        n += snprintf(payload + n, sizeof(payload) - n, ",\"duration_s\":%lu", _durationMs / 1000UL);
+    }
+    snprintf(payload + n, sizeof(payload) - n, ",\"ts\":%lu}", (unsigned long)timeKeeper.now());
+    mqttClient.publishQueued("plant/status", payload);
 }
 
 void PumpController::trackMinVoltage(float voltage) {
