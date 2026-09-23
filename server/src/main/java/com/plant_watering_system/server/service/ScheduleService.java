@@ -8,10 +8,13 @@ import com.plant_watering_system.server.dto.ScheduleResponse;
 import com.plant_watering_system.server.model.Instance;
 import com.plant_watering_system.server.model.ScheduleEntry;
 import com.plant_watering_system.server.model.WateringSchedule;
+import com.plant_watering_system.server.mqtt.MqttConnectedEvent;
 import com.plant_watering_system.server.mqtt.MqttPublisher;
 import com.plant_watering_system.server.repository.InstanceRepository;
 import com.plant_watering_system.server.repository.WateringScheduleRepository;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -98,6 +101,9 @@ public class ScheduleService {
         }
     }
 
+    // ApplicationReadyEvent too: the first connect happens in MqttClientManager's
+    // @PostConstruct, before @EventListener beans are registered.
+    @EventListener({ApplicationReadyEvent.class, MqttConnectedEvent.class})
     public void onMqttAvailable() {
         // Never publish on Paho's callback thread (connectComplete): a synchronous
         // QoS 1 publish waits for an ack that this very thread would have to process.
