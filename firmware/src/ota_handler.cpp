@@ -2,12 +2,13 @@
 #include "../include/config.h"
 #include <ArduinoOTA.h>
 #include <esp_task_wdt.h>
+#include "log.h"
 
 void OtaHandler::begin() {
     ArduinoOTA.setHostname(OTA_HOSTNAME);
     ArduinoOTA.setPassword(OTA_PASSWORD);
     ArduinoOTA.onStart([]() {
-        Serial.println("OTA: update starting");
+        LOG_INFO("OTA: update starting");
     });
     // An upload blocks loop() for longer than the watchdog timeout --
     // keep feeding it so the update isn't killed half-way.
@@ -15,13 +16,13 @@ void OtaHandler::begin() {
         esp_task_wdt_reset();
     });
     ArduinoOTA.onEnd([]() {
-        Serial.println("OTA: done, rebooting");
+        LOG_INFO("OTA: done, rebooting");
     });
     ArduinoOTA.onError([](ota_error_t err) {
-        Serial.printf("OTA: error [%u]\n", err);
+        LOG_ERROR("OTA: error [%u]", err);
     });
     ArduinoOTA.begin();
-    Serial.printf("OTA: ready at hostname '%s'\n", OTA_HOSTNAME);
+    LOG_INFO("OTA: ready at hostname '%s'", OTA_HOSTNAME);
 }
 
 void OtaHandler::handle() {

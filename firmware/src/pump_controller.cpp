@@ -3,6 +3,7 @@
 #include "mqtt_client.h"
 #include "wifi_manager.h"
 #include "battery_monitor.h"
+#include "log.h"
 
 void PumpController::begin() {
     pinMode(RELAY_PIN, OUTPUT);
@@ -17,7 +18,7 @@ void PumpController::start() {
     float voltage = batteryMonitor.getVoltage();
     float soc     = batteryMonitor.getSOC();
     if (!batteryAllowsPumpStart(voltage, soc, PUMP_MIN_START_VOLTAGE, PUMP_MIN_START_SOC)) {
-        Serial.printf("Pump: start refused, battery too low (%.2fV, %.1f%%)\n", voltage, soc);
+        LOG_WARN("Pump: start refused, battery too low (%.2fV, %.1f%%)", voltage, soc);
         mqttClient.publishQueued("plant/status", "{\"pump\":\"off\",\"reason\":\"low_battery\"}");
         char diag[96];
         snprintf(diag, sizeof(diag),
@@ -26,7 +27,7 @@ void PumpController::start() {
         return;
     }
     if (!isPlausibleCellVoltage(voltage)) {
-        Serial.println("Pump: no valid fuel gauge reading -- running without battery protection");
+        LOG_WARN("Pump: no valid fuel gauge reading -- running without battery protection");
     }
 
     _running = true;
@@ -40,7 +41,7 @@ void PumpController::start() {
     _lowVoltage.reset();
     setRelay(true);
     mqttClient.publishQueued("plant/status", "{\"pump\":\"on\"}");
-    Serial.println("Pump: started");
+    LOG_INFO("Pump: started");
 }
 
 void PumpController::stop() {
@@ -62,10 +63,10 @@ void PumpController::stopWithReason(const char* reason) {
         char statusPayload[64];
         snprintf(statusPayload, sizeof(statusPayload), "{\"pump\":\"off\",\"reason\":\"%s\"}", reason);
         mqttClient.publishQueued("plant/status", statusPayload);
-        Serial.printf("Pump: emergency stop (%s), %s dispensed\n", reason, payload);
+        LOG_WARN("Pump: emergency stop (%s), %s dispensed", reason, payload);
     } else {
         mqttClient.publishQueued("plant/status", "{\"pump\":\"off\"}");
-        Serial.printf("Pump: stopped, %s dispensed\n", payload);
+        LOG_INFO("Pump: stopped, %s dispensed", payload);
     }
 
     char diag[128];
@@ -82,13 +83,13 @@ void PumpController::update() {
     // No link = a stop command can't reach us. Stop now instead of running
     // blind until max runtime (e.g. WiFi collapsing from supply sag).
     if (!wifiManager.isConnected() || !mqttClient.isConnected()) {
-        Serial.println("Pump: WiFi/MQTT link lost while pumping, stopping");
+        LOG_WARN("Pump: WiFi/MQTT link lost while pumping, stopping");
         stopWithReason("link_lost");
         return;
     }
 
     if (now - _startMs >= MAX_PUMP_RUNTIME_MS) {
-        Serial.println("Pump: max runtime exceeded, stopping (MQTT stop command may be lost)");
+        LOG_WARN("Pump: max runtime exceeded, stopping (MQTT stop command may be lost)");
         stopWithReason("max_runtime");
         return;
     }
@@ -98,7 +99,7 @@ void PumpController::update() {
         float voltage = batteryMonitor.sampleVoltage();
         trackMinVoltage(voltage);
         if (_lowVoltage.addSample(voltage)) {
-            Serial.printf("Pump: battery sagging under load (%.2fV < %.2fV), stopping\n",
+            LOG_WARN("Pump: battery sagging under load (%.2fV < %.2fV), stopping",
                           voltage, PUMP_MIN_RUN_VOLTAGE);
             stopWithReason("low_battery");
             return;
@@ -112,7 +113,7 @@ void PumpController::update() {
         _lastFlowCheckMs = now;
 
         if (delta < FLOW_STALL_THRESHOLD_L) {
-            Serial.printf("Pump: flow stall (%.3f L in last %lus) -- empty tank or blockage?\n",
+            LOG_WARN("Pump: flow stall (%.3f L in last %lus) -- empty tank or blockage?",
                           delta, FLOW_CHECK_INTERVAL_MS / 1000UL);
             stopWithReason("flow_stall");
         }

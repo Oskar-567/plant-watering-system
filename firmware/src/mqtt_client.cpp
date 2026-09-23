@@ -3,6 +3,7 @@
 #include "../include/config.h"
 #include <PubSubClient.h>
 #include <WiFi.h>
+#include "log.h"
 
 static WiFiClient          wifiClient;
 static PubSubClient        pubsub(wifiClient);
@@ -61,10 +62,10 @@ void MqttClient::update() {
 bool MqttClient::publish(const char* topic, const char* payload) {
     if (!pubsub.connected()) return false;
     if (!pubsub.publish(topic, payload)) {
-        Serial.printf("MQTT publish FAILED [%s]: %s\n", topic, payload);
+        LOG_WARN("MQTT publish FAILED [%s]: %s", topic, payload);
         return false;
     }
-    Serial.printf("MQTT publish [%s]: %s\n", topic, payload);
+    LOG_DEBUG("MQTT publish [%s]: %s", topic, payload);
     return true;
 }
 
@@ -73,7 +74,7 @@ void MqttClient::publishQueued(const char* topic, const char* payload) {
     if (queueCount == 0 && publish(topic, payload)) return;
 
     if (queueCount == QUEUE_SIZE) {
-        Serial.printf("MQTT queue full, dropping [%s]: %s\n",
+        LOG_WARN("MQTT queue full, dropping [%s]: %s",
                       queue[queueHead].topic, queue[queueHead].payload);
         queueHead = (queueHead + 1) % QUEUE_SIZE;
         queueCount--;
@@ -82,7 +83,7 @@ void MqttClient::publishQueued(const char* topic, const char* payload) {
     slot.topic = topic;
     strlcpy(slot.payload, payload, sizeof(slot.payload));
     queueCount++;
-    Serial.printf("MQTT offline, queued [%s]: %s\n", topic, payload);
+    LOG_INFO("MQTT offline, queued [%s]: %s", topic, payload);
 }
 
 void MqttClient::flushQueue() {
@@ -100,13 +101,14 @@ bool MqttClient::isConnected() const {
 
 void MqttClient::reconnect() {
     if (!wifiManager.isConnected()) return;
-    Serial.print("MQTT: connecting...");
+    LOG_INFO("MQTT: connecting");
     if (pubsub.connect(MQTT_CLIENT_ID, MQTT_USER, MQTT_PASSWORD)) {
         pubsub.subscribe("plant/pump/command");
-        Serial.println(" connected");
+        pubsub.subscribe("plant/debug/command");
+        LOG_INFO("MQTT: connected");
         if (connectCallback) connectCallback();
     } else {
-        Serial.printf(" failed, rc=%d\n", pubsub.state());
+        LOG_WARN("MQTT: connect failed, rc=%d", pubsub.state());
     }
 }
 

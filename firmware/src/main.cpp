@@ -9,12 +9,17 @@
 #include "battery_monitor.h"
 #include "ota_handler.h"
 #include "diagnostics.h"
+#include "log.h"
 #include "../include/config.h"
 
 static unsigned long lastSensorMs  = 0;
 static unsigned long lastBatteryMs = 0;
 
 static void onMqttMessage(const char* topic, const char* payload) {
+    if (strcmp(topic, "plant/debug/command") == 0) {
+        logger.handleCommand(payload);
+        return;
+    }
     if (strcmp(topic, "plant/pump/command") != 0) return;
     if (strstr(payload, "start")) {
         pumpController.start();
@@ -58,13 +63,16 @@ void setup() {
     setCpuFrequencyMhz(CPU_FREQ_MHZ);
 
     Serial.begin(115200);
-    Serial.printf("CPU: running at %u MHz\n", getCpuFrequencyMhz());
+    // Before anything that logs: setup() lines belong in the post-mortem
+    // ring, and a boot loop is exactly what we want to be able to read back.
+    logger.begin();
+    LOG_INFO("CPU: running at %u MHz", getCpuFrequencyMhz());
     Wire.begin();
-    Serial.println("I2C scan:");
+    LOG_INFO("I2C scan:");
     for (uint8_t addr = 1; addr < 127; addr++) {
         Wire.beginTransmission(addr);
         if (Wire.endTransmission() == 0)
-            Serial.printf("  found device at 0x%02X\n", addr);
+            LOG_INFO("  found device at 0x%02X", addr);
     }
     // Hardware first: relay off before the (slow) WiFi connect, and the fuel
     // gauge must be initialised before the MQTT connect callback reads it.
@@ -75,7 +83,10 @@ void setup() {
     diagnostics.begin();
     wifiManager.begin();
     mqttClient.setMessageCallback(onMqttMessage);
-    mqttClient.setConnectCallback([]() { diagnostics.publishConnected(); });
+    mqttClient.setConnectCallback([]() {
+        diagnostics.publishConnected();
+        logger.publishHistory();
+    });
     mqttClient.begin();
     otaHandler.begin();
     // Reboot if loop() stops running -- a hung ESP32 would otherwise keep
@@ -85,11 +96,12 @@ void setup() {
     // waits up to 15 s for CONNACK). OTA feeds it from its progress callback.
     esp_task_wdt_init(WATCHDOG_TIMEOUT_S, true);
     esp_task_wdt_add(NULL);
-    Serial.println("=== Plant watering system ready ===");
+    LOG_INFO("=== Plant watering system ready ===");
 }
 
 void loop() {
     esp_task_wdt_reset();
+    logger.update();
     wifiManager.update();
     mqttClient.update();
     otaHandler.handle();

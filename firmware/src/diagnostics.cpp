@@ -3,6 +3,7 @@
 #include "battery_monitor.h"
 #include <WiFi.h>
 #include <esp_system.h>
+#include "log.h"
 
 static const char* resetReason = "unknown";
 
@@ -31,7 +32,7 @@ static const char* resetReasonName(esp_reset_reason_t r) {
 
 void Diagnostics::begin() {
     resetReason = resetReasonName(esp_reset_reason());
-    Serial.printf("Diag: reset reason = %s\n", resetReason);
+    LOG_INFO("Diag: reset reason = %s", resetReason);
 
     WiFi.onEvent([](arduino_event_id_t, arduino_event_info_t) {
         wifiLinkUp = true;
@@ -46,6 +47,8 @@ void Diagnostics::begin() {
             wifiDrops++;
             wifiLastDropReason = reason;
             wifiLastDropS = millis() / 1000UL;
+            // Serial, not LOG_*: this runs on the WiFi event task, and the
+            // log ring buffer is only written from the loop task.
             Serial.printf("Diag: WiFi link lost, reason=%u\n", reason);
         }
     }, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
