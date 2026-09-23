@@ -21,12 +21,16 @@ void Logger::begin() {
     }
 }
 
-void Logger::line(LogLevel level, const char* fmt, ...) {
+void Logger::emit(LogLevel level, bool force, const char* fmt, va_list args) {
+    // Re-entrant call: we are already inside a publish, and mqtt_client logs
+    // its own traffic. Writing here would push into the ring buffer that
+    // publishHistory() is iterating, overwriting the very lines being sent --
+    // the post-mortem log would destroy itself while delivering. Suppressing
+    // all three sinks, not just the MQTT one, is what makes that safe.
+    if (_publishing) return;
+
     char message[LOG_LINE_LEN];
-    va_list args;
-    va_start(args, fmt);
     vsnprintf(message, sizeof(message), fmt, args);
-    va_end(args);
 
     // Stamp once, so a replayed history line reads exactly like it did live.
     // Plain text rather than JSON: a log line may contain quotes or
@@ -39,14 +43,24 @@ void Logger::line(LogLevel level, const char* fmt, ...) {
     Serial.println(stamped);
     ring.push(stamped);
 
-    if (level <= _level) publishLine(stamped);
+    if (force || level <= _level) publishLine(stamped);
+}
+
+void Logger::line(LogLevel level, const char* fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    emit(level, false, fmt, args);
+    va_end(args);
+}
+
+void Logger::notice(const char* fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    emit(LOG_LEVEL_INFO, true, fmt, args);
+    va_end(args);
 }
 
 void Logger::publishLine(const char* text) {
-    // mqtt_client logs its own failures. Without this guard, a publish that
-    // fails would log, which would publish, which would fail -- exactly when
-    // the link is already broken and the log matters most.
-    if (_publishing) return;
     if (!mqttClient.isConnected()) return;
 
     _publishing = true;
@@ -84,8 +98,7 @@ bool Logger::handleCommand(const char* payload) {
                       ? 0
                       : millis() + static_cast<unsigned long>(minutes) * 60000UL;
 
-    // At ERROR so the confirmation goes out whatever level was just set.
-    line(LOG_LEVEL_ERROR, "Log: level %s for %u min", logLevelName(requested), minutes);
+    notice("Log: level %s for %u min", logLevelName(requested), minutes);
     return true;
 }
 
@@ -96,7 +109,7 @@ void Logger::update() {
 
     _revertAtMs = 0;
     _level      = LOG_LEVEL_INFO;
-    line(LOG_LEVEL_ERROR, "Log: raised level expired, back to info");
+    notice("Log: raised level expired, back to info");
 }
 
 Logger logger;

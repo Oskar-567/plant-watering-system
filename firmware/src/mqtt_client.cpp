@@ -65,7 +65,11 @@ bool MqttClient::publish(const char* topic, const char* payload) {
         LOG_WARN("MQTT publish FAILED [%s]: %s", topic, payload);
         return false;
     }
-    LOG_DEBUG("MQTT publish [%s]: %s", topic, payload);
+    // Topic and size only: the payload is visible on its own topic, and
+    // repeating it here just truncates against LOG_LINE_LEN. The two
+    // cases below DO log it, because a message that never reached the
+    // broker exists nowhere else.
+    LOG_DEBUG("MQTT publish [%s] %u B", topic, (unsigned)strlen(payload));
     return true;
 }
 
@@ -83,7 +87,7 @@ void MqttClient::publishQueued(const char* topic, const char* payload) {
     slot.topic = topic;
     strlcpy(slot.payload, payload, sizeof(slot.payload));
     queueCount++;
-    LOG_INFO("MQTT offline, queued [%s]: %s", topic, payload);
+    LOG_INFO("MQTT offline, queued [%s] %u B", topic, (unsigned)strlen(payload));
 }
 
 void MqttClient::flushQueue() {

@@ -187,3 +187,29 @@ inline bool parseDebugCommand(const char* json, LogLevel& level, uint16_t& minut
     minutes = parsedMinutes;
     return true;
 }
+
+// --- actions on plant/debug/command ---------------------------------------
+// NONE and UNKNOWN are kept apart on purpose: {"level":"debug"} legitimately
+// carries no action, while {"action":"restart"} is a typo that has to be
+// reported rather than silently doing nothing.
+
+enum DebugAction : uint8_t {
+    DEBUG_ACTION_NONE = 0,
+    DEBUG_ACTION_REBOOT,
+    DEBUG_ACTION_UNKNOWN,
+};
+
+inline DebugAction parseDebugAction(const char* json) {
+    if (json == nullptr) return DEBUG_ACTION_NONE;
+
+    const char* value = log_detail::valueAfterKey(json, "action");
+    if (value == nullptr || *value != '"') return DEBUG_ACTION_NONE;
+    value++;
+
+    const char* wanted = "reboot";
+    uint16_t    i      = 0;
+    while (wanted[i] != '\0' && value[i] == wanted[i]) i++;
+    if (wanted[i] == '\0' && value[i] == '"') return DEBUG_ACTION_REBOOT;
+
+    return DEBUG_ACTION_UNKNOWN;
+}

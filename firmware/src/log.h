@@ -1,5 +1,6 @@
 #pragma once
 #include <Arduino.h>
+#include <stdarg.h>
 #include "log_buffer.h"
 
 // Remote debug log. Every line goes to three places:
@@ -20,6 +21,13 @@ public:
 
     void line(LogLevel level, const char* fmt, ...);
 
+    // Always published, whatever level is active, but stamped as info.
+    // For the log's own housekeeping (level changed, level expired): those
+    // must reach you even at level error, yet they are not failures -- and a
+    // fake "error" in a diagnostic log is worse than a missing line, because
+    // that is the word you grep for when something has actually broken.
+    void notice(const char* fmt, ...);
+
     // plant/debug/command -- {"level":"debug","minutes":30}
     bool handleCommand(const char* payload);
 
@@ -29,6 +37,7 @@ public:
     LogLevel level() const { return _level; }
 
 private:
+    void emit(LogLevel level, bool force, const char* fmt, va_list args);
     void publishLine(const char* text);
 
     LogLevel      _level      = LOG_LEVEL_INFO;

@@ -79,6 +79,23 @@ accepted change on `plant/log`. A raised level always expires on its own
 (default 15 minutes, capped at 120), so a forgotten `debug` cannot drain the
 battery. `info` is the resting level and never expires.
 
+### Reboot the device
+
+```bash
+mosquitto_pub $MQTT -t plant/debug/command -m '{"action":"reboot"}'
+```
+
+`esp_restart()` is a software reset, so the RTC log ring survives it and the
+lines from before the restart come back on `plant/log/history`. That makes
+this the cheap way to exercise the post-mortem path — no OTA cycle needed —
+and the way to wake a wedged device without waiting out the watchdog.
+
+Refused while the pump is running: a reset mid-run would abandon the flow
+count and the server would never see the matching `off`. The refusal is
+logged, so you can tell it apart from a command that never arrived. A
+power cycle is *not* equivalent — it clears RTC memory, so no history is
+replayed and `plant/diag` reports `reset_reason: poweron`.
+
 ### Pump
 
 ```bash

@@ -203,6 +203,30 @@ void test_excessive_duration_is_capped_to_protect_the_battery() {
     TEST_ASSERT_EQUAL_UINT16(DEBUG_LEVEL_MAX_MINUTES, minutes);
 }
 
+// --- actions on plant/debug/command ---
+void test_reboot_action_is_recognised() {
+    TEST_ASSERT_EQUAL_INT(DEBUG_ACTION_REBOOT, parseDebugAction("{\"action\":\"reboot\"}"));
+}
+
+void test_command_without_action_key_reports_none() {
+    // A plain level change must not look like an unknown action.
+    TEST_ASSERT_EQUAL_INT(DEBUG_ACTION_NONE, parseDebugAction("{\"level\":\"debug\"}"));
+}
+
+void test_unrecognised_action_is_distinguished_from_absent() {
+    // A typo has to be reported, not silently ignored.
+    TEST_ASSERT_EQUAL_INT(DEBUG_ACTION_UNKNOWN, parseDebugAction("{\"action\":\"restart\"}"));
+}
+
+void test_action_wins_when_a_level_is_also_present() {
+    TEST_ASSERT_EQUAL_INT(DEBUG_ACTION_REBOOT,
+                          parseDebugAction("{\"action\":\"reboot\",\"level\":\"debug\"}"));
+}
+
+void test_null_payload_reports_none() {
+    TEST_ASSERT_EQUAL_INT(DEBUG_ACTION_NONE, parseDebugAction(nullptr));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_pushed_line_can_be_read_back);
@@ -222,5 +246,10 @@ int main() {
     RUN_TEST(test_command_with_unknown_level_is_rejected);
     RUN_TEST(test_command_without_level_key_is_rejected);
     RUN_TEST(test_excessive_duration_is_capped_to_protect_the_battery);
+    RUN_TEST(test_reboot_action_is_recognised);
+    RUN_TEST(test_command_without_action_key_reports_none);
+    RUN_TEST(test_unrecognised_action_is_distinguished_from_absent);
+    RUN_TEST(test_action_wins_when_a_level_is_also_present);
+    RUN_TEST(test_null_payload_reports_none);
     return UNITY_END();
 }

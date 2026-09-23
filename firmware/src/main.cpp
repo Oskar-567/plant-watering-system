@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <esp_task_wdt.h>
+#include <esp_system.h>
 #include "wifi_manager.h"
 #include "mqtt_client.h"
 #include "pump_controller.h"
@@ -13,11 +14,31 @@
 #include "../include/config.h"
 
 static unsigned long lastSensorMs  = 0;
+static unsigned long rebootAtMs    = 0;  // 0 = no reboot pending
 static unsigned long lastBatteryMs = 0;
+
+// Remote reboot. esp_restart() is a software reset, so the RTC log ring
+// survives it -- which is what makes this usable for testing the post-mortem
+// path, and for waking a wedged device without waiting out the watchdog.
+static void requestReboot() {
+    if (pumpController.isRunning()) {
+        // A reset mid-run would abandon the flow count and the server would
+        // never see the matching "off".
+        LOG_WARN("Reboot refused: pump is running");
+        return;
+    }
+    // Deferred, so the confirmation actually makes it onto the wire.
+    logger.notice("Reboot requested, restarting in 1s");
+    rebootAtMs = millis() + 1000;
+}
 
 static void onMqttMessage(const char* topic, const char* payload) {
     if (strcmp(topic, "plant/debug/command") == 0) {
-        logger.handleCommand(payload);
+        switch (parseDebugAction(payload)) {
+            case DEBUG_ACTION_REBOOT:  requestReboot(); return;
+            case DEBUG_ACTION_UNKNOWN: LOG_WARN("Unknown action on plant/debug/command"); return;
+            case DEBUG_ACTION_NONE:    logger.handleCommand(payload); return;
+        }
         return;
     }
     if (strcmp(topic, "plant/pump/command") != 0) return;
@@ -102,6 +123,11 @@ void setup() {
 void loop() {
     esp_task_wdt_reset();
     logger.update();
+
+    if (rebootAtMs != 0 && static_cast<long>(millis() - rebootAtMs) >= 0) {
+        esp_restart();
+    }
+
     wifiManager.update();
     mqttClient.update();
     otaHandler.handle();
