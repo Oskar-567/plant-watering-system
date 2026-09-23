@@ -19,6 +19,10 @@ struct QueuedMessage {
     char        payload[QUEUE_PAYLOAD_LEN];
 };
 static QueuedMessage queue[QUEUE_SIZE];
+
+// PubSubClient's default 256-byte buffer is too small for a full schedule
+// (8 entries ~ 300 bytes incl. topic) -- larger messages are silently dropped.
+static const uint16_t MQTT_BUFFER_SIZE = 1024;
 static uint8_t       queueHead  = 0;
 static uint8_t       queueCount = 0;
 
@@ -42,6 +46,7 @@ void MqttClient::begin() {
     pubsub.setServer(MQTT_BROKER, MQTT_PORT);
     pubsub.setCallback(onMessage);
     pubsub.setKeepAlive(MQTT_KEEPALIVE_SEC);
+    pubsub.setBufferSize(MQTT_BUFFER_SIZE);
     reconnect();
 }
 
@@ -108,6 +113,7 @@ void MqttClient::reconnect() {
     LOG_INFO("MQTT: connecting");
     if (pubsub.connect(MQTT_CLIENT_ID, MQTT_USER, MQTT_PASSWORD)) {
         pubsub.subscribe("plant/pump/command");
+        pubsub.subscribe("plant/schedule", 1);  // retained: delivered on every (re)connect
         pubsub.subscribe("plant/debug/command");
         LOG_INFO("MQTT: connected");
         if (connectCallback) connectCallback();

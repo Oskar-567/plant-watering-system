@@ -12,6 +12,7 @@
 #include "ota_handler.h"
 #include "diagnostics.h"
 #include "time_keeper.h"
+#include "watering_scheduler.h"
 #include "log.h"
 #include "../include/config.h"
 
@@ -41,6 +42,10 @@ static void onMqttMessage(const char* topic, const char* payload) {
             case DEBUG_ACTION_UNKNOWN: LOG_WARN("Unknown action on plant/debug/command"); return;
             case DEBUG_ACTION_NONE:    logger.handleCommand(payload); return;
         }
+        return;
+    }
+    if (strcmp(topic, "plant/schedule") == 0) {
+        wateringScheduler.onScheduleMessage(payload);
         return;
     }
     if (strcmp(topic, "plant/pump/command") != 0) return;
@@ -114,9 +119,10 @@ void setup() {
     flowMeter.begin();
     moistureSensors.begin();
     batteryMonitor.begin();
+    wateringScheduler.begin();
     diagnostics.begin();
     wifiManager.begin();
-    timeKeeper.begin(DEFAULT_TZ);  // after WiFi init -- see time_keeper.h
+    timeKeeper.begin(wateringScheduler.timezone());  // after WiFi init -- see time_keeper.h
     mqttClient.setMessageCallback(onMqttMessage);
     mqttClient.setConnectCallback([]() {
         diagnostics.publishConnected();
@@ -146,6 +152,7 @@ void loop() {
     mqttClient.update();
     otaHandler.handle();
     pumpController.update();
+    wateringScheduler.update();
 
     unsigned long now = millis();
 
