@@ -7,6 +7,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
+import java.nio.charset.StandardCharsets;
+
 @Component
 @ConditionalOnProperty(name = "mqtt.enabled", havingValue = "true")
 public class MqttPublisher {
@@ -26,6 +28,18 @@ public class MqttPublisher {
             clientManager.getClient().publish(topic, message);
         } catch (MqttException e) {
             log.error("Failed to publish to {}: {}", topic, e.getMessage());
+        }
+    }
+
+    // Retained: the broker hands the last message to every (re)connecting subscriber
+    public void publishRetained(String topic, String payload) {
+        try {
+            MqttMessage message = new MqttMessage(payload.getBytes(StandardCharsets.UTF_8));
+            message.setQos(1);
+            message.setRetained(true);
+            clientManager.getClient().publish(topic, message);
+        } catch (MqttException e) {
+            log.error("Failed to publish retained to {}: {}", topic, e.getMessage());
         }
     }
 }
