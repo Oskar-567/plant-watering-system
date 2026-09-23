@@ -66,9 +66,48 @@ class MqttMessageHandlerTest {
 
         handler().handle("plant/sensors/flow", "{\"liters\":0.35}");
 
-        verify(pumpService).recordFlowReceived(instanceId, 0.35);
+        verify(pumpService).recordFlowReceived(instanceId, 0.35, null);
         verify(tankEmptyDetectionService).onFlowReceived(instanceId, 0.35);
         verifyNoInteractions(sensorReadingService);
+    }
+
+    @Test
+    void flowPayloadWithTrigger_passesTrigger() {
+        givenInstanceWithPrefix("plant");
+
+        handler().handle("plant/sensors/flow", "{\"liters\":0.35,\"trigger\":\"schedule\"}");
+
+        verify(pumpService).recordFlowReceived(instanceId, 0.35, "schedule");
+    }
+
+    @Test
+    void statusOff_forwardsTriggerReasonAndTimestamp() {
+        givenInstanceWithPrefix("plant");
+
+        handler().handle("plant/status",
+                "{\"pump\":\"off\",\"trigger\":\"schedule\",\"reason\":\"completed\",\"ts\":1757764800}");
+
+        verify(tankEmptyDetectionService).onPumpStatus(instanceId, "off");
+        verify(pumpService).recordPumpStatus(instanceId, "off", "schedule", "completed", 1757764800L);
+    }
+
+    @Test
+    void statusRejected_recordsOutcomeWithoutTouchingTankDetection() {
+        givenInstanceWithPrefix("plant");
+
+        handler().handle("plant/status", "{\"pump\":\"rejected\",\"trigger\":\"manual\",\"reason\":\"busy\"}");
+
+        verify(pumpService).recordPumpStatus(instanceId, "rejected", "manual", "busy", 0L);
+        verifyNoInteractions(tankEmptyDetectionService);
+    }
+
+    @Test
+    void statusBatteryLow_recordsNothing() {
+        givenInstanceWithPrefix("plant");
+
+        handler().handle("plant/status", "{\"battery\":\"low\"}");
+
+        verifyNoInteractions(pumpService, tankEmptyDetectionService);
     }
 
     @Test

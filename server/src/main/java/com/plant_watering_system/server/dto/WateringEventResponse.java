@@ -11,5 +11,6 @@ public record WateringEventResponse(
         OffsetDateTime stoppedAt,
         BigDecimal liters,
         String triggeredBy,
+        String outcome,
         Long durationSeconds
 ) {}

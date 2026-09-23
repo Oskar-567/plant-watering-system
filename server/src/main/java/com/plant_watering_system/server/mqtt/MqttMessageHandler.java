@@ -83,7 +83,7 @@ public class MqttMessageHandler {
         try {
             Map<String, Object> data = objectMapper.readValue(payload, new TypeReference<>() {});
             double liters = ((Number) data.get("liters")).doubleValue();
-            pumpService.recordFlowReceived(instanceId, liters);
+            pumpService.recordFlowReceived(instanceId, liters, (String) data.get("trigger"));
             tankEmptyDetectionService.onFlowReceived(instanceId, liters);
         } catch (Exception e) {
             log.warn("Failed to parse flow payload: {}", payload, e);
@@ -104,10 +104,16 @@ public class MqttMessageHandler {
     private void handleStatus(UUID instanceId, String payload) {
         try {
             Map<String, Object> data = objectMapper.readValue(payload, new TypeReference<>() {});
-            if (data.containsKey("pump")) {
-                String pumpStatus = (String) data.get("pump");
+            if (!data.containsKey("pump")) return;
+
+            String pumpStatus = (String) data.get("pump");
+            // "rejected" = the pump never ran, nothing for tank detection to track
+            if ("on".equals(pumpStatus) || "off".equals(pumpStatus)) {
                 tankEmptyDetectionService.onPumpStatus(instanceId, pumpStatus);
             }
+            long ts = data.get("ts") instanceof Number n ? n.longValue() : 0L;
+            pumpService.recordPumpStatus(
+                    instanceId, pumpStatus, (String) data.get("trigger"), (String) data.get("reason"), ts);
         } catch (Exception e) {
             log.warn("Failed to parse status payload: {}", payload, e);
         }
