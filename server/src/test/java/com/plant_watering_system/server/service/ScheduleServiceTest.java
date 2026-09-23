@@ -99,7 +99,7 @@ class ScheduleServiceTest {
     @Test
     void replace_firstSchedule_savesVersionOneAndPublishesRetainedPayload() {
         givenInstance();
-        when(scheduleRepository.findById(id)).thenReturn(Optional.empty());
+        when(scheduleRepository.findByIdForUpdate(id)).thenReturn(Optional.empty());
         when(scheduleRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         ScheduleResponse response = service().replace(id, new ScheduleRequest(List.of(
@@ -117,7 +117,8 @@ class ScheduleServiceTest {
     @Test
     void replace_existingSchedule_incrementsVersionAndReplacesEntries() {
         givenInstance();
-        when(scheduleRepository.findById(id)).thenReturn(Optional.of(storedSchedule(3, 3)));
+        // Row lock: concurrent PUTs must not both produce the same next version
+        when(scheduleRepository.findByIdForUpdate(id)).thenReturn(Optional.of(storedSchedule(3, 3)));
         when(scheduleRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         ScheduleResponse response = service().replace(id, new ScheduleRequest(List.of()));
@@ -129,14 +130,12 @@ class ScheduleServiceTest {
     }
 
     @Test
-    void recordAck_storesAcknowledgedVersion() {
-        WateringSchedule stored = storedSchedule(5, 4);
-        when(scheduleRepository.findById(id)).thenReturn(Optional.of(stored));
-
+    void recordAck_updatesOnlyTheAcknowledgedVersion() {
         service().recordAck(id, 5);
 
-        assertEquals(5, stored.getAcknowledgedVersion());
-        verify(scheduleRepository).save(stored);
+        // A load-modify-save would write a stale copy back over a concurrent PUT
+        verify(scheduleRepository).updateAcknowledgedVersion(id, 5);
+        verify(scheduleRepository, never()).save(any());
     }
 
     @Test

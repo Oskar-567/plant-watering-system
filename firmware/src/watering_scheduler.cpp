@@ -92,7 +92,10 @@ void WateringScheduler::update() {
 void WateringScheduler::publishAck() {
     char payload[32];
     snprintf(payload, sizeof(payload), "{\"version\":%lu}", (unsigned long)_schedule.version);
-    mqttClient.publishQueued("plant/schedule/ack", payload);
+    // Direct, not queued: the retained schedule is redelivered -- and acked
+    // again -- on every reconnect, so a queued ack would only crowd pump
+    // reports out of the offline queue.
+    mqttClient.publish("plant/schedule/ack", payload);
 }
 
 WateringScheduler wateringScheduler;

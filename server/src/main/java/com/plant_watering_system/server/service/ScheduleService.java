@@ -17,6 +17,7 @@ import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.DayOfWeek;
@@ -66,9 +67,12 @@ public class ScheduleService {
                 .orElse(new ScheduleResponse(0, null, true, null, List.of()));
     }
 
+    // Row lock held until commit: concurrent PUTs get distinct versions, and an
+    // ack arriving for the published version waits instead of racing the save.
+    @Transactional
     public ScheduleResponse replace(UUID instanceId, ScheduleRequest request) {
         Instance instance = requireInstance(instanceId);
-        WateringSchedule schedule = scheduleRepository.findById(instanceId).orElseGet(() -> {
+        WateringSchedule schedule = scheduleRepository.findByIdForUpdate(instanceId).orElseGet(() -> {
             WateringSchedule created = new WateringSchedule();
             created.setInstanceId(instanceId);
             return created;
@@ -86,10 +90,7 @@ public class ScheduleService {
     }
 
     public void recordAck(UUID instanceId, int version) {
-        scheduleRepository.findById(instanceId).ifPresent(schedule -> {
-            schedule.setAcknowledgedVersion(version);
-            scheduleRepository.save(schedule);
-        });
+        scheduleRepository.updateAcknowledgedVersion(instanceId, version);
     }
 
     // Retained messages are lost if the broker restarts without persistence,
