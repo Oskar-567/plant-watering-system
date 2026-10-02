@@ -6,7 +6,6 @@ import com.plant_watering_system.server.repository.InstanceRepository;
 import com.plant_watering_system.server.service.PumpService;
 import com.plant_watering_system.server.service.ScheduleService;
 import com.plant_watering_system.server.service.SensorReadingService;
-import com.plant_watering_system.server.service.TankEmptyDetectionService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -23,15 +22,13 @@ class MqttMessageHandlerTest {
     @Mock InstanceRepository instanceRepository;
     @Mock SensorReadingService sensorReadingService;
     @Mock PumpService pumpService;
-    @Mock TankEmptyDetectionService tankEmptyDetectionService;
     @Mock ScheduleService scheduleService;
 
     private final UUID instanceId = UUID.randomUUID();
 
     private MqttMessageHandler handler() {
         return new MqttMessageHandler(
-                instanceRepository, sensorReadingService, pumpService, tankEmptyDetectionService,
-                scheduleService, new ObjectMapper());
+                instanceRepository, sensorReadingService, pumpService, scheduleService, new ObjectMapper());
     }
 
     // Instance has no setId (id is generated), so a mock provides the id
@@ -64,13 +61,12 @@ class MqttMessageHandlerTest {
     }
 
     @Test
-    void flowPayload_notifiesPumpAndTankDetectionWithoutStoringReading() {
+    void flowPayload_notifiesPumpWithoutStoringReading() {
         givenInstanceWithPrefix("plant");
 
         handler().handle("plant/sensors/flow", "{\"liters\":0.35}");
 
         verify(pumpService).recordFlowReceived(instanceId, 0.35, null);
-        verify(tankEmptyDetectionService).onFlowReceived(instanceId, 0.35);
         verifyNoInteractions(sensorReadingService);
     }
 
@@ -90,18 +86,16 @@ class MqttMessageHandlerTest {
         handler().handle("plant/status",
                 "{\"pump\":\"off\",\"trigger\":\"schedule\",\"reason\":\"completed\",\"ts\":1757764800}");
 
-        verify(tankEmptyDetectionService).onPumpStatus(instanceId, "off");
         verify(pumpService).recordPumpStatus(instanceId, "off", "schedule", "completed", 1757764800L);
     }
 
     @Test
-    void statusRejected_recordsOutcomeWithoutTouchingTankDetection() {
+    void statusRejected_recordsOutcome() {
         givenInstanceWithPrefix("plant");
 
         handler().handle("plant/status", "{\"pump\":\"rejected\",\"trigger\":\"manual\",\"reason\":\"busy\"}");
 
         verify(pumpService).recordPumpStatus(instanceId, "rejected", "manual", "busy", 0L);
-        verifyNoInteractions(tankEmptyDetectionService);
     }
 
     @Test
@@ -110,7 +104,7 @@ class MqttMessageHandlerTest {
 
         handler().handle("plant/status", "{\"battery\":\"low\"}");
 
-        verifyNoInteractions(pumpService, tankEmptyDetectionService);
+        verifyNoInteractions(pumpService);
     }
 
     @Test
@@ -119,7 +113,7 @@ class MqttMessageHandlerTest {
 
         handler().handle("unknown/sensors/moisture", "{\"sensor_0\":42}");
 
-        verifyNoInteractions(sensorReadingService, pumpService, tankEmptyDetectionService, scheduleService);
+        verifyNoInteractions(sensorReadingService, pumpService, scheduleService);
     }
 
     @Test
@@ -129,6 +123,6 @@ class MqttMessageHandlerTest {
         handler().handle("plant/schedule/ack", "{\"version\":7}");
 
         verify(scheduleService).recordAck(instanceId, 7);
-        verifyNoInteractions(pumpService, sensorReadingService, tankEmptyDetectionService);
+        verifyNoInteractions(pumpService, sensorReadingService);
     }
 }

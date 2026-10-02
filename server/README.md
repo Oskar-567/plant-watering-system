@@ -65,7 +65,7 @@ Server starts on `http://localhost:8080`.
 
 ## Required Setup: Register an Instance
 
-The server silently drops every MQTT message (moisture, flow, battery, status) until a matching `Instance` row exists in Postgres — no error, just `WARN ... No instance found for mqtt prefix: <prefix>` in the logs. No sensor readings are stored, the app has nothing to show, and `TankEmptyDetectionService`/watering-history logging never trigger, even though the ESP32↔MQTT connection itself works fine.
+The server silently drops every MQTT message (moisture, flow, battery, status) until a matching `Instance` row exists in Postgres — no error, just `WARN ... No instance found for mqtt prefix: <prefix>` in the logs. No sensor readings are stored, the app has nothing to show, and no watering history is logged (so `pumpRunning`/`tankEmpty` stay `false`), even though the ESP32↔MQTT connection itself works fine.
 
 **Before anything else, create an `Instance` for each ESP32** via `POST /instances` (see the login example below). The critical field is `mqttPrefix`:
 
@@ -144,7 +144,7 @@ Content-Type: application/json
 ```
 
 Tests run without any external dependencies:
-- **Unit tests** (`JwtTokenProviderTest`, `PumpServiceTest`, `TankEmptyDetectionServiceTest`) — no Spring context, Mockito only
+- **Unit tests** (`JwtTokenProviderTest`, `PumpServiceTest`, `InstanceServiceTest`) — no Spring context, Mockito only
 - **Web-layer tests** (`@WebMvcTest`) — controller + security only, services mocked via `@MockitoBean`
 
 > Note: Spring Boot 4 requires `spring-boot-starter-webmvc-test` for `@WebMvcTest`. Use `@MockitoBean` instead of the deprecated `@MockBean`.

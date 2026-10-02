@@ -20,9 +20,12 @@
 // for why Automatic Light Sleep isn't available on this core)
 #define CPU_FREQ_MHZ 80
 
-// Pump relay
+// Pump switch: DFRobot DFR0457 MOSFET module (active-high, HIGH = on).
+// The input needs a pull-down (10k signal -> GND) so the pump stays off while
+// GPIO 26 floats during reset, brownout and deep sleep. Names kept from the
+// former relay module; set RELAY_ACTIVE_LOW true only for a low-active relay.
 #define RELAY_PIN        26
-#define RELAY_ACTIVE_LOW true   // true for most relay modules (LOW = on)
+#define RELAY_ACTIVE_LOW false
 
 // Pump safety (independent of MQTT -- protects against a lost/missed stop command)
 #define MAX_PUMP_RUNTIME_MS     600000UL  // hard cutoff: pump never runs longer than this (10 min)
@@ -38,7 +41,7 @@
 #define PUMP_LOW_VOLTAGE_SAMPLES       3       // ... for this many consecutive checks
 #define PUMP_VOLTAGE_CHECK_INTERVAL_MS 1000UL  // voltage check interval while pumping
 
-// Watchdog: reboot (relay released) if loop() hangs longer than this.
+// Watchdog: reboot (pump output off) if loop() hangs longer than this.
 // Must stay above the longest legit block in loop() (MQTT connect: up to ~18 s).
 #define WATCHDOG_TIMEOUT_S 30
 
