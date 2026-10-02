@@ -66,7 +66,7 @@ class InstanceControllerTest {
         var id = UUID.randomUUID();
         given(service.create(any())).willReturn(
                 new InstanceResponse(id, "Balkon", "plant/balkon", false, false, 1, null, null, OffsetDateTime.now(),
-                        false, false)
+                        false, false, false, null)
         );
 
         mvc.perform(post("/instances")
@@ -85,13 +85,14 @@ class InstanceControllerTest {
         var id = UUID.randomUUID();
         given(service.findById(id)).willReturn(
                 new InstanceResponse(id, "Balkon", "plant", true, true, 1, null, null, OffsetDateTime.now(),
-                        true, false)
+                        true, false, false, null)
         );
 
         mvc.perform(get("/instances/{id}", id).with(user("test")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.pumpRunning").value(true))
-                .andExpect(jsonPath("$.tankEmpty").value(false));
+                .andExpect(jsonPath("$.tankEmpty").value(false))
+                .andExpect(jsonPath("$.pumpRequested").value(false));
     }
 
     @Test

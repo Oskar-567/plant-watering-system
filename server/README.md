@@ -72,7 +72,7 @@ The server silently drops every MQTT message (moisture, flow, battery, status) u
 - It must exactly match the **first path segment** of the topics the ESP32 publishes/subscribes to (`MqttMessageHandler` splits the topic on the first `/` and looks up only that segment).
 - The firmware publishes to topics like `plant/sensors/battery`, `plant/status`, etc. — so `mqttPrefix` must be `"plant"`, **not** `"plant/balcony"` or any other multi-segment value. A multi-segment prefix will never match and messages get dropped exactly like a missing instance.
 
-If sensor data isn't showing up anywhere, check the instance's `mqttPrefix` first before suspecting the database or MQTT connectivity.
+If sensor data isn't showing up anywhere, check the instance's `mqttPrefix` first before suspecting the database or MQTT connectivity. `lastSeenAt` in `GET /instances` stays `null` until a message with the instance's prefix arrives.
 
 ## Key Commands
 

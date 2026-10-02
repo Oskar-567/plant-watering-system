@@ -16,9 +16,13 @@ public record InstanceResponse(
         BigDecimal latitude,
         BigDecimal longitude,
         OffsetDateTime createdAt,
-        @Schema(description = "A watering event is still open (pump started, no off/rejected yet)")
+        @Schema(description = "A run has started on the device and not ended yet")
         boolean pumpRunning,
-        @Schema(description = "The most recent closed watering event ended with outcome flow_stall")
-        boolean tankEmpty
+        @Schema(description = "A manual request waits for the device's next wake")
+        boolean pumpRequested,
+        @Schema(description = "The latest run that actually started ended with outcome flow_stall")
+        boolean tankEmpty,
+        @Schema(description = "Receive time of the latest MQTT message from the device, null = never seen")
+        OffsetDateTime lastSeenAt
 ) {
 }

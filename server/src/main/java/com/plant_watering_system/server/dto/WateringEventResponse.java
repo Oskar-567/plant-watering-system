@@ -7,7 +7,10 @@ import java.util.UUID;
 public record WateringEventResponse(
         UUID id,
         UUID instanceId,
-        OffsetDateTime startedAt,
+        OffsetDateTime requestedAt,
+        Integer requestedDurationSeconds,
+        OffsetDateTime expiresAt,       // requests only: the device must pick it up before this
+        OffsetDateTime startedAt,       // null = the pump never ran (request expired/cancelled/refused)
         OffsetDateTime stoppedAt,
         BigDecimal liters,
         String triggeredBy,

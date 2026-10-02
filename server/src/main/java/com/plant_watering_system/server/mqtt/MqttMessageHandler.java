@@ -11,6 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.time.OffsetDateTime;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -54,6 +55,7 @@ public class MqttMessageHandler {
             return;
         }
         UUID instanceId = instance.get().getId();
+        instanceRepository.updateLastSeen(instanceId, OffsetDateTime.now());
 
         switch (suffix) {
             case "sensors/moisture" -> handleMoisture(instanceId, payload);
@@ -68,11 +70,12 @@ public class MqttMessageHandler {
     private void handleMoisture(UUID instanceId, String payload) {
         try {
             Map<String, Object> data = objectMapper.readValue(payload, new TypeReference<>() {});
+            long ts = timestamp(data);
             for (Map.Entry<String, Object> entry : data.entrySet()) {
                 if (entry.getKey().startsWith("sensor_")) {
                     int index = Integer.parseInt(entry.getKey().substring(7));
                     double percent = ((Number) entry.getValue()).doubleValue();
-                    sensorReadingService.recordMoisture(instanceId, index, percent);
+                    sensorReadingService.recordMoisture(instanceId, index, percent, ts);
                 }
             }
         } catch (Exception e) {
@@ -84,7 +87,7 @@ public class MqttMessageHandler {
         try {
             Map<String, Object> data = objectMapper.readValue(payload, new TypeReference<>() {});
             double liters = ((Number) data.get("liters")).doubleValue();
-            pumpService.recordFlowReceived(instanceId, liters, (String) data.get("trigger"));
+            pumpService.recordFlowReceived(instanceId, liters, (String) data.get("trigger"), (String) data.get("id"));
         } catch (Exception e) {
             log.warn("Failed to parse flow payload: {}", payload, e);
         }
@@ -95,7 +98,7 @@ public class MqttMessageHandler {
             Map<String, Object> data = objectMapper.readValue(payload, new TypeReference<>() {});
             double soc = ((Number) data.get("soc")).doubleValue();
             double voltage = ((Number) data.get("voltage")).doubleValue();
-            sensorReadingService.recordBattery(instanceId, soc, voltage);
+            sensorReadingService.recordBattery(instanceId, soc, voltage, timestamp(data));
         } catch (Exception e) {
             log.warn("Failed to parse battery payload: {}", payload, e);
         }
@@ -106,12 +109,17 @@ public class MqttMessageHandler {
             Map<String, Object> data = objectMapper.readValue(payload, new TypeReference<>() {});
             if (!data.containsKey("pump")) return;
 
-            long ts = data.get("ts") instanceof Number n ? n.longValue() : 0L;
             pumpService.recordPumpStatus(instanceId,
-                    (String) data.get("pump"), (String) data.get("trigger"), (String) data.get("reason"), ts);
+                    (String) data.get("pump"), (String) data.get("trigger"), (String) data.get("reason"),
+                    timestamp(data), (String) data.get("id"));
         } catch (Exception e) {
             log.warn("Failed to parse status payload: {}", payload, e);
         }
+    }
+
+    // Device epoch seconds; absent or not a number = 0 (unknown)
+    private static long timestamp(Map<String, Object> data) {
+        return data.get("ts") instanceof Number n ? n.longValue() : 0L;
     }
 
     private void handleScheduleAck(UUID instanceId, String payload) {

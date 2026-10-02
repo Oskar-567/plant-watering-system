@@ -2,6 +2,9 @@
 #include <Wire.h>
 #include <esp_task_wdt.h>
 #include <esp_system.h>
+#include <esp_sleep.h>
+#include <driver/gpio.h>
+#include <WiFi.h>
 #include "wifi_manager.h"
 #include "mqtt_client.h"
 #include "pump_controller.h"
@@ -19,6 +22,8 @@
 static unsigned long lastSensorMs  = 0;
 static unsigned long rebootAtMs    = 0;  // 0 = no reboot pending
 static unsigned long lastBatteryMs = 0;
+static unsigned long sleepAtMs     = 0;  // 0 = no test sleep pending
+static uint16_t      sleepSeconds  = 0;
 
 // Remote reboot. esp_restart() is a software reset, so the RTC log ring
 // survives it -- which is what makes this usable for testing the post-mortem
@@ -35,10 +40,40 @@ static void requestReboot() {
     rebootAtMs = millis() + 1000;
 }
 
+// One deep sleep on request, for measuring the board's sleep current
+// without USB. The wake is a normal boot, so OTA keeps working afterwards.
+static void requestSleep(uint16_t seconds) {
+    if (pumpController.isRunning()) {
+        LOG_WARN("Sleep refused: pump is running");
+        return;
+    }
+    // Deferred like the reboot, so the confirmation makes it onto the wire.
+    logger.notice("Test sleep requested: %u s, sleeping in 1s", seconds);
+    sleepSeconds = seconds;
+    sleepAtMs    = millis() + 1000;
+}
+
+static void enterTestSleep() {
+    if (pumpController.isRunning()) {  // a schedule run may have started meanwhile
+        LOG_WARN("Sleep cancelled: pump is running");
+        sleepAtMs = 0;
+        return;
+    }
+    // GPIO 26 floats in deep sleep unless held; the module's pull-down is
+    // the second line of defence. Released again in pumpController.begin().
+    gpio_hold_en(static_cast<gpio_num_t>(RELAY_PIN));
+    gpio_deep_sleep_hold_en();
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+    esp_sleep_enable_timer_wakeup(static_cast<uint64_t>(sleepSeconds) * 1000000ULL);
+    esp_deep_sleep_start();
+}
+
 static void onMqttMessage(const char* topic, const char* payload) {
     if (strcmp(topic, "plant/debug/command") == 0) {
         switch (parseDebugAction(payload)) {
             case DEBUG_ACTION_REBOOT:  requestReboot(); return;
+            case DEBUG_ACTION_SLEEP:   requestSleep(parseSleepSeconds(payload)); return;
             case DEBUG_ACTION_UNKNOWN: LOG_WARN("Unknown action on plant/debug/command"); return;
             case DEBUG_ACTION_NONE:    logger.handleCommand(payload); return;
         }
@@ -146,6 +181,9 @@ void loop() {
 
     if (rebootAtMs != 0 && static_cast<long>(millis() - rebootAtMs) >= 0) {
         esp_restart();
+    }
+    if (sleepAtMs != 0 && static_cast<long>(millis() - sleepAtMs) >= 0) {
+        enterTestSleep();
     }
 
     wifiManager.update();

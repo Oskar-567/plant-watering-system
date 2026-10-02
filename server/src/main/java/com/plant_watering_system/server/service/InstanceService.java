@@ -44,26 +44,28 @@ public class InstanceService {
         instance.setLatitude(request.latitude());
         instance.setLongitude(request.longitude());
         // A new instance has no watering events yet
-        return toResponse(repository.save(instance), false, false);
+        return toResponse(repository.save(instance), false, false, false);
     }
 
-    // Status flags come from two batch queries over all given instances, not one query per instance
+    // Status flags come from three batch queries over all given instances, not one query per instance
     private List<InstanceResponse> toResponses(List<Instance> instances) {
         if (instances.isEmpty()) return List.of();
         List<UUID> ids = instances.stream().map(Instance::getId).toList();
-        Set<UUID> running = wateringEventRepository.findInstanceIdsWithOpenEvent(ids);
+        Set<UUID> running = wateringEventRepository.findInstanceIdsWithRunningEvent(ids);
+        Set<UUID> requested = wateringEventRepository.findInstanceIdsWithRequestedEvent(ids);
         Set<UUID> tankEmpty = wateringEventRepository.findInstanceIdsWithTankEmpty(ids);
         return instances.stream()
-                .map(i -> toResponse(i, running.contains(i.getId()), tankEmpty.contains(i.getId())))
+                .map(i -> toResponse(i, running.contains(i.getId()), requested.contains(i.getId()),
+                        tankEmpty.contains(i.getId())))
                 .toList();
     }
 
-    private InstanceResponse toResponse(Instance i, boolean pumpRunning, boolean tankEmpty) {
+    private InstanceResponse toResponse(Instance i, boolean pumpRunning, boolean pumpRequested, boolean tankEmpty) {
         return new InstanceResponse(
                 i.getId(), i.getName(), i.getMqttPrefix(),
                 i.isHasPump(), i.isHasBattery(), i.getSensorCount(),
                 i.getLatitude(), i.getLongitude(), i.getCreatedAt(),
-                pumpRunning, tankEmpty
+                pumpRunning, pumpRequested, tankEmpty, i.getLastSeenAt()
         );
     }
 }

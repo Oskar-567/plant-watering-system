@@ -9,12 +9,16 @@ import com.plant_watering_system.server.repository.MoistureReadingRepository;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 
 @Service
 public class SensorReadingService {
+
+    private static final Duration MAX_CLOCK_AHEAD = Duration.ofDays(1);
 
     private final MoistureReadingRepository moistureReadingRepository;
     private final BatteryReadingRepository batteryReadingRepository;
@@ -26,22 +30,31 @@ public class SensorReadingService {
         this.batteryReadingRepository = batteryReadingRepository;
     }
 
-    public void recordMoisture(UUID instanceId, int sensorIndex, double percent) {
+    // ts = device epoch seconds, 0 = no valid clock on the device
+    public void recordMoisture(UUID instanceId, int sensorIndex, double percent, long ts) {
         MoistureReading reading = new MoistureReading();
         reading.setInstanceId(instanceId);
         reading.setSensorIndex((short) sensorIndex);
         reading.setPercent(percent);
-        reading.setMeasuredAt(OffsetDateTime.now());
+        reading.setMeasuredAt(measuredAt(ts));
         moistureReadingRepository.save(reading);
     }
 
-    public void recordBattery(UUID instanceId, double soc, double voltage) {
+    public void recordBattery(UUID instanceId, double soc, double voltage, long ts) {
         BatteryReading reading = new BatteryReading();
         reading.setInstanceId(instanceId);
         reading.setSoc(soc);
         reading.setVoltage(voltage);
-        reading.setMeasuredAt(OffsetDateTime.now());
+        reading.setMeasuredAt(measuredAt(ts));
         batteryReadingRepository.save(reading);
+    }
+
+    // A clock far in the future is a broken RTC, not a reading from tomorrow -- fall back to receive time.
+    static OffsetDateTime measuredAt(long ts) {
+        OffsetDateTime now = OffsetDateTime.now();
+        if (ts <= 0) return now;
+        OffsetDateTime device = OffsetDateTime.ofInstant(Instant.ofEpochSecond(ts), ZoneOffset.UTC);
+        return device.isAfter(now.plus(MAX_CLOCK_AHEAD)) ? now : device;
     }
 
     public List<MoisturePoint> getMoisture(UUID instanceId, Duration range) {

@@ -10,6 +10,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -39,20 +40,22 @@ class InstanceServiceTest {
     @Test
     void findAll_derivesStatusFlagsWithOneQueryPerFlag() {
         UUID running = UUID.randomUUID();
+        UUID requested = UUID.randomUUID();
         UUID tankEmpty = UUID.randomUUID();
-        UUID idle = UUID.randomUUID();
-        List<Instance> instances = List.of(instanceWithId(running), instanceWithId(tankEmpty), instanceWithId(idle));
+        List<Instance> instances = List.of(instanceWithId(running), instanceWithId(requested), instanceWithId(tankEmpty));
+        List<UUID> ids = List.of(running, requested, tankEmpty);
         when(instanceRepository.findAll()).thenReturn(instances);
-        when(wateringEventRepository.findInstanceIdsWithOpenEvent(List.of(running, tankEmpty, idle)))
-                .thenReturn(Set.of(running));
-        when(wateringEventRepository.findInstanceIdsWithTankEmpty(List.of(running, tankEmpty, idle)))
-                .thenReturn(Set.of(tankEmpty));
+        when(wateringEventRepository.findInstanceIdsWithRunningEvent(ids)).thenReturn(Set.of(running));
+        when(wateringEventRepository.findInstanceIdsWithRequestedEvent(ids)).thenReturn(Set.of(requested));
+        when(wateringEventRepository.findInstanceIdsWithTankEmpty(ids)).thenReturn(Set.of(tankEmpty));
 
         List<InstanceResponse> result = service().findAll();
 
         assertEquals(List.of(true, false, false), result.stream().map(InstanceResponse::pumpRunning).toList());
-        assertEquals(List.of(false, true, false), result.stream().map(InstanceResponse::tankEmpty).toList());
-        verify(wateringEventRepository).findInstanceIdsWithOpenEvent(any());
+        assertEquals(List.of(false, true, false), result.stream().map(InstanceResponse::pumpRequested).toList());
+        assertEquals(List.of(false, false, true), result.stream().map(InstanceResponse::tankEmpty).toList());
+        verify(wateringEventRepository).findInstanceIdsWithRunningEvent(any());
+        verify(wateringEventRepository).findInstanceIdsWithRequestedEvent(any());
         verify(wateringEventRepository).findInstanceIdsWithTankEmpty(any());
         verifyNoMoreInteractions(wateringEventRepository);
     }
@@ -66,17 +69,22 @@ class InstanceServiceTest {
     }
 
     @Test
-    void findById_includesStatusFlags() {
+    void findById_includesStatusFlagsAndLastSeen() {
         UUID id = UUID.randomUUID();
+        OffsetDateTime seen = OffsetDateTime.parse("2026-10-02T12:00:00Z");
         Instance instance = instanceWithId(id);
+        when(instance.getLastSeenAt()).thenReturn(seen);
         when(instanceRepository.findById(id)).thenReturn(Optional.of(instance));
-        when(wateringEventRepository.findInstanceIdsWithOpenEvent(List.of(id))).thenReturn(Set.of(id));
+        when(wateringEventRepository.findInstanceIdsWithRunningEvent(List.of(id))).thenReturn(Set.of(id));
+        when(wateringEventRepository.findInstanceIdsWithRequestedEvent(List.of(id))).thenReturn(Set.of());
         when(wateringEventRepository.findInstanceIdsWithTankEmpty(List.of(id))).thenReturn(Set.of(id));
 
         InstanceResponse result = service().findById(id);
 
         assertTrue(result.pumpRunning());
+        assertFalse(result.pumpRequested());
         assertTrue(result.tankEmpty());
+        assertEquals(seen, result.lastSeenAt());
     }
 
     @Test
@@ -89,6 +97,7 @@ class InstanceServiceTest {
                 new InstanceRequest("Balkon", "plant", true, true, 1, null, null));
 
         assertFalse(result.pumpRunning());
+        assertFalse(result.pumpRequested());
         assertFalse(result.tankEmpty());
         verifyNoInteractions(wateringEventRepository);
     }

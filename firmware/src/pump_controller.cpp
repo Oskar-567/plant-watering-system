@@ -4,6 +4,7 @@
 #include "battery_monitor.h"
 #include "time_keeper.h"
 #include "log.h"
+#include <driver/gpio.h>
 
 static const char* triggerName(PumpTrigger trigger) {
     return trigger == PumpTrigger::Schedule ? "schedule" : "manual";
@@ -12,6 +13,10 @@ static const char* triggerName(PumpTrigger trigger) {
 void PumpController::begin() {
     pinMode(RELAY_PIN, OUTPUT);
     setRelay(false);
+    // After a deep sleep the pin is still latched by the sleep hold; release
+    // it only now that the output register already says "off".
+    gpio_deep_sleep_hold_dis();
+    gpio_hold_dis(static_cast<gpio_num_t>(RELAY_PIN));
 }
 
 bool PumpController::start(uint32_t durationS, PumpTrigger trigger) {

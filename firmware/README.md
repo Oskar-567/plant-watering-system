@@ -96,6 +96,32 @@ logged, so you can tell it apart from a command that never arrived. A
 power cycle is *not* equivalent — it clears RTC memory, so no history is
 replayed and `plant/diag` reports `reset_reason: poweron`.
 
+### Test sleep (measure the sleep current)
+
+```bash
+mosquitto_pub $MQTT -t plant/debug/command -m '{"action":"sleep","s":120}'
+```
+
+One deep sleep of `s` seconds (default 60, capped at 600), then a normal boot
+(`plant/diag` reports `reset_reason: deepsleep`), so OTA keeps working and no
+USB is needed. GPIO 26 is held low during the sleep. Refused while the pump is
+running, like the reboot.
+
+Measuring:
+
+1. Disconnect the solar panel. Put the meter in the battery plus lead, ahead
+   of the whole system.
+2. **Bridge the meter with a wire while the device is awake.** In the mA/µA
+   range its shunt drops too much voltage, and the WiFi peaks (300–500 mA)
+   would brown the ESP32 out.
+3. Send the command, wait until the device sleeps, remove the bridge and read.
+   Bridge again before the sleep ends.
+4. Unplug one consumer at a time (moisture sensor VCC, MOSFET module, boost
+   input) and repeat. Each difference is that part's share.
+
+Above about 1 mA in sleep, deep sleep cannot fix the energy budget; see
+`docs/superpowers/specs/2026-10-02-esp32-deep-sleep-v1-design.md`, step 0.
+
 ### Pump
 
 ```bash
