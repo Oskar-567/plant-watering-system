@@ -6,6 +6,12 @@
 // Pure FIFO for MQTT messages that must survive a disconnect (no Arduino
 // deps, unit-tested in test/test_publish_queue). When full, the oldest
 // message is dropped -- the caller logs it via front() before pushing.
+//
+// Constant-initialized (all members have initializers), so an instance can live
+// in RTC_DATA_ATTR memory and survive deep sleep: no runtime constructor wipes
+// it on wake. Topics are pointers to string literals in flash; they stay valid
+// across deep sleep because the image is unchanged. Any other reset
+// re-initializes RTC_DATA_ATTR.
 
 // Sized for schedule runs during a WiFi outage: each run queues 4 messages
 // (on, flow, off, diag), so 16 holds several runs plus missed reports.
@@ -14,8 +20,8 @@ static const uint8_t PUBLISH_QUEUE_SIZE        = 16;
 static const size_t  PUBLISH_QUEUE_PAYLOAD_LEN = 128;
 
 struct QueuedMessage {
-    const char* topic;  // string literal / static -- only the pointer is kept
-    char        payload[PUBLISH_QUEUE_PAYLOAD_LEN];
+    const char* topic = nullptr;  // string literal / static -- only the pointer is kept
+    char        payload[PUBLISH_QUEUE_PAYLOAD_LEN] = {};
 };
 
 class PublishQueue {
@@ -42,7 +48,7 @@ public:
     }
 
 private:
-    QueuedMessage _items[PUBLISH_QUEUE_SIZE];
+    QueuedMessage _items[PUBLISH_QUEUE_SIZE] = {};
     uint8_t       _head  = 0;
     uint8_t       _count = 0;
 };

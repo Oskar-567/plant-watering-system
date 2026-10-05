@@ -122,18 +122,43 @@ Measuring:
 Above about 1 mA in sleep, deep sleep cannot fix the energy budget; see
 `docs/superpowers/specs/2026-10-02-esp32-deep-sleep-v1-design.md`, step 0.
 
-### Pump
+### Manual watering and the awake window
+
+Manual runs come from the server as a retained request; the device runs each id once
+(the id is stored in NVS before the pump starts, so a reconnect or crash never repeats it):
 
 ```bash
-mosquitto_pub $MQTT -t plant/pump/command -m '{"action":"start"}'
+# what the server publishes (for testing without the app)
+mosquitto_pub $MQTT -r -t plant/pump/request -m "{\"id\":\"test-1\",\"duration_s\":20,\"expires\":$(( $(date +%s) + 600 ))}"
+mosquitto_pub $MQTT -r -t plant/pump/request -m '{"id":null}'   # clear
+```
+
+The legacy `{"action":"start",...}` on `plant/pump/command` is ignored; `{"action":"stop"}` still stops a run.
+
+Awake window (needed for OTA once the device sleeps, phase 3; stored but without effect today):
+
+```bash
+mosquitto_pub $MQTT -r -t plant/system/awake -m "{\"until\":$(( $(date +%s) + 1200 ))}"
+mosquitto_pub $MQTT -r -t plant/system/awake -m '{"until":0}'
+```
+
+A run cut off by a reset (brownout, watchdog, unplugged) is reported after the reboot as
+`{"pump":"off","reason":"interrupted",...}`; the stop time is the reset time if the clock
+survived, else the planned end. There is no automatic retry.
+
+### Pump
+
+Start a run with a request (see above); stop it and watch the status with:
+
+```bash
 mosquitto_pub $MQTT -t plant/pump/command -m '{"action":"stop"}'
 mosquitto_sub $MQTT -t 'plant/status' -v
 ```
 
-The pump refuses to start on a low cell and stops by itself on max runtime,
-flow stall, voltage sag or a lost link — see the pump row in `CLAUDE.md` for
-the thresholds. Every stop reports its reason on `plant/status` and
-`plant/diag`.
+The pump refuses to start on a low cell and stops by itself when its
+`duration_s` is up, on max runtime, flow stall or voltage sag — see the pump
+row in `CLAUDE.md` for the thresholds. A WiFi outage no longer stops a run.
+Every stop reports its reason on `plant/status` and `plant/diag`.
 
 ### Health after an outage
 

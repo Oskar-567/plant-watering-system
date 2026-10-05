@@ -16,7 +16,12 @@
 #include "diagnostics.h"
 #include "time_keeper.h"
 #include "watering_scheduler.h"
+#include "pump_request_handler.h"
+#include "run_marker_store.h"
+#include "publish_queue.h"
+#include "wake_policy.h"
 #include "log.h"
+#include "report_format.h"
 #include "../include/config.h"
 
 static unsigned long lastSensorMs  = 0;
@@ -69,6 +74,24 @@ static void enterTestSleep() {
     esp_deep_sleep_start();
 }
 
+// Awake window from plant/system/awake. Phase 2 never sleeps; the value is
+// kept in RTC memory so the phase-3 wake cycle can honour it.
+RTC_DATA_ATTR static uint32_t awakeUntil = 0;
+
+static void onAwakeMessage(const char* payload) {
+    uint32_t requested;
+    if (!parseAwakeUntil(payload, requested)) {
+        LOG_WARN("Awake: ignoring invalid payload: %s", payload);
+        return;
+    }
+    awakeUntil = effectiveAwakeUntil(requested, timeKeeper.now(), AWAKE_MAX_S);
+    if (awakeUntil) {
+        LOG_INFO("Awake: window until %lu", (unsigned long)awakeUntil);
+    } else {
+        LOG_INFO("Awake: no window");
+    }
+}
+
 static void onMqttMessage(const char* topic, const char* payload) {
     if (strcmp(topic, "plant/debug/command") == 0) {
         switch (parseDebugAction(payload)) {
@@ -77,6 +100,14 @@ static void onMqttMessage(const char* topic, const char* payload) {
             case DEBUG_ACTION_UNKNOWN: LOG_WARN("Unknown action on plant/debug/command"); return;
             case DEBUG_ACTION_NONE:    logger.handleCommand(payload); return;
         }
+        return;
+    }
+    if (strcmp(topic, "plant/system/awake") == 0) {
+        onAwakeMessage(payload);
+        return;
+    }
+    if (strcmp(topic, "plant/pump/request") == 0) {
+        pumpRequestHandler.onRequestMessage(payload);
         return;
     }
     if (strcmp(topic, "plant/schedule") == 0) {
@@ -89,8 +120,8 @@ static void onMqttMessage(const char* topic, const char* payload) {
     // overwrites -- never read it after dispatching.
     PumpCommand cmd = parsePumpCommand(payload, MAX_PUMP_RUNTIME_MS / 1000UL);
     switch (cmd.action) {
-        case PumpAction::Start:
-            pumpController.start(cmd.durationS, PumpTrigger::Manual);
+        case PumpAction::LegacyStart:
+            LOG_DEBUG("MQTT: legacy start ignored, manual runs come from plant/pump/request");
             break;
         case PumpAction::Stop:
             pumpController.stop("command");
@@ -102,24 +133,33 @@ static void onMqttMessage(const char* topic, const char* payload) {
     }
 }
 
+// A marker that survived the reset: the run was cut off (brownout, watchdog,
+// panic, power loss). Reported once, queued until MQTT is up. No retry.
+static void reportInterruptedRun() {
+    RunMarker marker;
+    if (!runMarkerStore.load(marker)) return;
+    uint32_t stopTs = interruptedStopTs(marker.startTs, marker.durationS, timeKeeper.now());
+    const char* trigger = marker.trigger == RUN_MARKER_TRIGGER_SCHEDULE ? "schedule" : "manual";
+    char payload[PUBLISH_QUEUE_PAYLOAD_LEN];
+    formatPumpStatus(payload, sizeof(payload), "off", trigger, "interrupted", 0, marker.id, stopTs);
+    mqttClient.publishQueued("plant/status", payload);
+    LOG_WARN("Pump: run interrupted by a reset (%s, started %lu, %lus)", trigger,
+             (unsigned long)marker.startTs, (unsigned long)marker.durationS);
+    runMarkerStore.clear();
+}
+
 static void publishMoisture() {
+    int percents[SENSOR_COUNT];
+    for (uint8_t i = 0; i < SENSOR_COUNT; i++) percents[i] = moistureSensors.getPercent(i);
     char payload[256];
-    int pos = snprintf(payload, sizeof(payload), "{");
-    for (uint8_t i = 0; i < SENSOR_COUNT; i++) {
-        pos += snprintf(payload + pos, sizeof(payload) - pos,
-                        "\"sensor_%u\":%d%s",
-                        i, moistureSensors.getPercent(i),
-                        (i < SENSOR_COUNT - 1) ? "," : "");
-    }
-    snprintf(payload + pos, sizeof(payload) - pos, "}");
+    formatMoisture(payload, sizeof(payload), percents, SENSOR_COUNT, timeKeeper.now());
     mqttClient.publish("plant/sensors/moisture", payload);
 }
 
 static void publishBattery() {
     char payload[64];
-    snprintf(payload, sizeof(payload),
-             "{\"soc\":%.1f,\"voltage\":%.2f}",
-             batteryMonitor.getSOC(), batteryMonitor.getVoltage());
+    formatBattery(payload, sizeof(payload), batteryMonitor.getSOC(), batteryMonitor.getVoltage(),
+                  timeKeeper.now());
     mqttClient.publish("plant/sensors/battery", payload);
 
     if (batteryMonitor.getSOC() < BATTERY_LOW_THRESHOLD) {
@@ -155,6 +195,8 @@ void setup() {
     moistureSensors.begin();
     batteryMonitor.begin();
     wateringScheduler.begin();
+    pumpRequestHandler.begin();
+    reportInterruptedRun();
     diagnostics.begin();
     wifiManager.begin();
     timeKeeper.begin(wateringScheduler.timezone());  // after WiFi init -- see time_keeper.h
@@ -191,6 +233,7 @@ void loop() {
     otaHandler.handle();
     pumpController.update();
     wateringScheduler.update();
+    pumpRequestHandler.update();
 
     unsigned long now = millis();
 
