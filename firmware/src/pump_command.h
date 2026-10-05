@@ -6,14 +6,17 @@
 // Pure parser for plant/pump/command payloads (no Arduino deps, unit-tested
 // in test/test_pump_command).
 
-enum class PumpAction : uint8_t { Invalid, Start, Stop };
+// LegacyStart: the pre-deep-sleep start command. The server still sends it next
+// to every plant/pump/request until phase 4; the firmware runs requests only and
+// ignores it -- running both would water twice.
+enum class PumpAction : uint8_t { Invalid, LegacyStart, Stop };
 
 struct PumpCommand {
     PumpAction action;
-    uint32_t   durationS;  // only meaningful for Start
+    uint32_t   durationS;  // only meaningful for LegacyStart
 };
 
-// {"action":"start","duration_s":600} -> Start, 600 (1..maxDurationS)
+// {"action":"start","duration_s":600} -> LegacyStart, 600 (1..maxDurationS, ignored by the firmware)
 // {"action":"stop"}                   -> Stop
 // Anything else -> Invalid. A start without a valid duration is rejected on
 // purpose: the ESP32 must always know when to stop by itself instead of
@@ -33,5 +36,5 @@ inline PumpCommand parsePumpCommand(const char* json, uint32_t maxDurationS) {
     if (!duration.is<uint32_t>()) return invalid;
     uint32_t durationS = duration.as<uint32_t>();
     if (durationS == 0 || durationS > maxDurationS) return invalid;
-    return {PumpAction::Start, durationS};
+    return {PumpAction::LegacyStart, durationS};
 }

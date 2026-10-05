@@ -4,30 +4,34 @@ import com.plant_watering_system.server.dto.InstanceRequest;
 import com.plant_watering_system.server.dto.InstanceResponse;
 import com.plant_watering_system.server.model.Instance;
 import com.plant_watering_system.server.repository.InstanceRepository;
+import com.plant_watering_system.server.repository.WateringEventRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
 public class InstanceService {
 
     private final InstanceRepository repository;
+    private final WateringEventRepository wateringEventRepository;
 
-    public InstanceService(InstanceRepository repository) {
+    public InstanceService(InstanceRepository repository, WateringEventRepository wateringEventRepository) {
         this.repository = repository;
+        this.wateringEventRepository = wateringEventRepository;
     }
 
     public List<InstanceResponse> findAll() {
-        return repository.findAll().stream().map(this::toResponse).toList();
+        return toResponses(repository.findAll());
     }
 
     public InstanceResponse findById(UUID id) {
-        return repository.findById(id)
-                .map(this::toResponse)
+        Instance instance = repository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        return toResponses(List.of(instance)).getFirst();
     }
 
     public InstanceResponse create(InstanceRequest request) {
@@ -39,14 +43,29 @@ public class InstanceService {
         instance.setSensorCount(request.sensorCount());
         instance.setLatitude(request.latitude());
         instance.setLongitude(request.longitude());
-        return toResponse(repository.save(instance));
+        // A new instance has no watering events yet
+        return toResponse(repository.save(instance), false, false, false);
     }
 
-    private InstanceResponse toResponse(Instance i) {
+    // Status flags come from three batch queries over all given instances, not one query per instance
+    private List<InstanceResponse> toResponses(List<Instance> instances) {
+        if (instances.isEmpty()) return List.of();
+        List<UUID> ids = instances.stream().map(Instance::getId).toList();
+        Set<UUID> running = wateringEventRepository.findInstanceIdsWithRunningEvent(ids);
+        Set<UUID> requested = wateringEventRepository.findInstanceIdsWithRequestedEvent(ids);
+        Set<UUID> tankEmpty = wateringEventRepository.findInstanceIdsWithTankEmpty(ids);
+        return instances.stream()
+                .map(i -> toResponse(i, running.contains(i.getId()), requested.contains(i.getId()),
+                        tankEmpty.contains(i.getId())))
+                .toList();
+    }
+
+    private InstanceResponse toResponse(Instance i, boolean pumpRunning, boolean pumpRequested, boolean tankEmpty) {
         return new InstanceResponse(
                 i.getId(), i.getName(), i.getMqttPrefix(),
                 i.isHasPump(), i.isHasBattery(), i.getSensorCount(),
-                i.getLatitude(), i.getLongitude(), i.getCreatedAt()
+                i.getLatitude(), i.getLongitude(), i.getCreatedAt(),
+                pumpRunning, pumpRequested, tankEmpty, i.getLastSeenAt()
         );
     }
 }

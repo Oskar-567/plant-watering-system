@@ -39,7 +39,7 @@ class SensorReadingServiceTest {
         UUID id = UUID.randomUUID();
         OffsetDateTime before = OffsetDateTime.now();
 
-        service().recordMoisture(id, 2, 42.5);
+        service().recordMoisture(id, 2, 42.5, 0L);
 
         ArgumentCaptor<MoistureReading> captor = ArgumentCaptor.forClass(MoistureReading.class);
         verify(moistureReadingRepository).save(captor.capture());
@@ -56,7 +56,7 @@ class SensorReadingServiceTest {
         UUID id = UUID.randomUUID();
         OffsetDateTime before = OffsetDateTime.now();
 
-        service().recordBattery(id, 78.1, 3.91);
+        service().recordBattery(id, 78.1, 3.91, 0L);
 
         ArgumentCaptor<BatteryReading> captor = ArgumentCaptor.forClass(BatteryReading.class);
         verify(batteryReadingRepository).save(captor.capture());
@@ -69,6 +69,40 @@ class SensorReadingServiceTest {
     }
 
     // --- query ---
+
+    @Test
+    void recordMoisture_withDeviceTimestamp_usesIt() {
+        UUID id = UUID.randomUUID();
+
+        service().recordMoisture(id, 0, 50.0, 1790751600L);
+
+        ArgumentCaptor<MoistureReading> captor = ArgumentCaptor.forClass(MoistureReading.class);
+        verify(moistureReadingRepository).save(captor.capture());
+        assertEquals(1790751600L, captor.getValue().getMeasuredAt().toEpochSecond());
+    }
+
+    @Test
+    void recordMoisture_withFutureTimestamp_usesReceiveTime() {
+        UUID id = UUID.randomUUID();
+        long nextWeek = OffsetDateTime.now().plusDays(7).toEpochSecond();
+
+        service().recordMoisture(id, 0, 50.0, nextWeek);
+
+        ArgumentCaptor<MoistureReading> captor = ArgumentCaptor.forClass(MoistureReading.class);
+        verify(moistureReadingRepository).save(captor.capture());
+        assertFalse(captor.getValue().getMeasuredAt().isAfter(OffsetDateTime.now()));
+    }
+
+    @Test
+    void recordBattery_withDeviceTimestamp_usesIt() {
+        UUID id = UUID.randomUUID();
+
+        service().recordBattery(id, 80.0, 3.9, 1790751600L);
+
+        ArgumentCaptor<BatteryReading> captor = ArgumentCaptor.forClass(BatteryReading.class);
+        verify(batteryReadingRepository).save(captor.capture());
+        assertEquals(1790751600L, captor.getValue().getMeasuredAt().toEpochSecond());
+    }
 
     @Test
     void getMoisture_queriesSinceNowMinusRangeAndMapsToDto() {

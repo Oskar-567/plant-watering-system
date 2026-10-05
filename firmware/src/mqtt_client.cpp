@@ -12,7 +12,9 @@ static MqttMessageCallback userCallback    = nullptr;
 static MqttConnectCallback connectCallback = nullptr;
 
 // Pending messages for publishQueued(), see publish_queue.h for sizing.
-static PublishQueue queue;
+// In RTC memory: queued pump reports survive deep sleep (phase 3) and are sent
+// on the next wake with WiFi. Lost on any other reset (re-initialized).
+RTC_DATA_ATTR static PublishQueue queue;
 
 // PubSubClient's default 256-byte buffer is too small for a full schedule
 // (8 entries ~ 300 bytes incl. topic) -- larger messages are silently dropped.
@@ -99,6 +101,8 @@ void MqttClient::reconnect() {
     if (pubsub.connect(MQTT_CLIENT_ID, MQTT_USER, MQTT_PASSWORD)) {
         pubsub.subscribe("plant/pump/command");
         pubsub.subscribe("plant/schedule", 1);  // retained: delivered on every (re)connect
+        pubsub.subscribe("plant/pump/request", 1);  // retained: the pending manual run, if any
+        pubsub.subscribe("plant/system/awake", 1);  // retained: OTA/debug window, used once the device sleeps
         pubsub.subscribe("plant/debug/command");
         LOG_INFO("MQTT: connected");
         if (connectCallback) connectCallback();

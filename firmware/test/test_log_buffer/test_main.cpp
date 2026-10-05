@@ -227,6 +227,33 @@ void test_null_payload_reports_none() {
     TEST_ASSERT_EQUAL_INT(DEBUG_ACTION_NONE, parseDebugAction(nullptr));
 }
 
+// --- sleep action (sleep current measurement) ---
+void test_sleep_action_is_recognised() {
+    TEST_ASSERT_EQUAL_INT(DEBUG_ACTION_SLEEP, parseDebugAction("{\"action\":\"sleep\",\"s\":120}"));
+}
+
+void test_action_name_must_match_exactly() {
+    // "sleepy" must not be taken for "sleep", nor "rebooted" for "reboot".
+    TEST_ASSERT_EQUAL_INT(DEBUG_ACTION_UNKNOWN, parseDebugAction("{\"action\":\"sleepy\"}"));
+    TEST_ASSERT_EQUAL_INT(DEBUG_ACTION_UNKNOWN, parseDebugAction("{\"action\":\"rebooted\"}"));
+}
+
+void test_sleep_seconds_are_parsed() {
+    TEST_ASSERT_EQUAL_UINT16(120, parseSleepSeconds("{\"action\":\"sleep\",\"s\":120}"));
+}
+
+void test_sleep_without_seconds_uses_the_default() {
+    TEST_ASSERT_EQUAL_UINT16(DEBUG_SLEEP_DEFAULT_S, parseSleepSeconds("{\"action\":\"sleep\"}"));
+}
+
+void test_sleep_of_zero_seconds_uses_the_default() {
+    TEST_ASSERT_EQUAL_UINT16(DEBUG_SLEEP_DEFAULT_S, parseSleepSeconds("{\"action\":\"sleep\",\"s\":0}"));
+}
+
+void test_excessive_sleep_is_capped_so_the_device_comes_back() {
+    TEST_ASSERT_EQUAL_UINT16(DEBUG_SLEEP_MAX_S, parseSleepSeconds("{\"action\":\"sleep\",\"s\":99999}"));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_pushed_line_can_be_read_back);
@@ -251,5 +278,11 @@ int main() {
     RUN_TEST(test_unrecognised_action_is_distinguished_from_absent);
     RUN_TEST(test_action_wins_when_a_level_is_also_present);
     RUN_TEST(test_null_payload_reports_none);
+    RUN_TEST(test_sleep_action_is_recognised);
+    RUN_TEST(test_action_name_must_match_exactly);
+    RUN_TEST(test_sleep_seconds_are_parsed);
+    RUN_TEST(test_sleep_without_seconds_uses_the_default);
+    RUN_TEST(test_sleep_of_zero_seconds_uses_the_default);
+    RUN_TEST(test_excessive_sleep_is_capped_so_the_device_comes_back);
     return UNITY_END();
 }

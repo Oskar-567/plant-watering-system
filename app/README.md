@@ -6,9 +6,9 @@ React Native mobile app for the PlantWatch plant watering system. Communicates w
 
 | Layer | Technology |
 |---|---|
-| Framework | Expo SDK 56 (Managed Workflow) |
-| React Native | 0.85.3 |
-| Routing | expo-router v3 (file-based) |
+| Framework | Expo SDK 57 (Managed Workflow) |
+| React Native | 0.86.3 |
+| Routing | expo-router 57 (file-based) |
 | State | Zustand 5 |
 | Auth storage | expo-secure-store (JWT) |
 | Charts | react-native-svg (custom SVG) |
@@ -57,7 +57,7 @@ adb install android/app/build/outputs/apk/debug/app-debug.apk
 
 ## Important Notes
 
-- **Do NOT upgrade Gradle** when Android Studio prompts — Gradle 9.6.0 breaks the build. Prebuild generates the correct version (9.3.1).
+- **Do NOT upgrade Gradle** when Android Studio prompts — keep the version `npx expo prebuild` generates.
 - The `android/` folder is fully generated and can be deleted and regenerated at any time.
 - After `npm install`, re-apply the Kotlin compiler patches in node_modules (see `AGENTS.md` for details).
 

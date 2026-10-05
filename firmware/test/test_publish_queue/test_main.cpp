@@ -65,6 +65,15 @@ void test_long_payload_is_truncated_and_terminated() {
     TEST_ASSERT_EQUAL_size_t(PUBLISH_QUEUE_PAYLOAD_LEN - 1, strlen(q.front().payload));
 }
 
+// The queue lives in RTC memory (RTC_DATA_ATTR) to survive deep sleep. That only
+// works with constant initialization: a runtime constructor would empty it on
+// every wake. This line does not compile if the constructor is not constexpr.
+static constexpr PublishQueue kConstantInitialized{};
+
+void test_queue_is_constant_initialized_and_empty() {
+    TEST_ASSERT_TRUE(kConstantInitialized.empty());
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_empty_initially);
@@ -72,5 +81,6 @@ int main() {
     RUN_TEST(test_holds_two_offline_runs_and_a_missed_entry);
     RUN_TEST(test_full_queue_drops_oldest);
     RUN_TEST(test_long_payload_is_truncated_and_terminated);
+    RUN_TEST(test_queue_is_constant_initialized_and_empty);
     return UNITY_END();
 }

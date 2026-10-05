@@ -38,6 +38,9 @@ public class Instance {
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
+    @Column(name = "last_seen_at", insertable = false, updatable = false)
+    private OffsetDateTime lastSeenAt;
+
     public UUID getId() { return id; }
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
@@ -54,4 +57,5 @@ public class Instance {
     public BigDecimal getLongitude() { return longitude; }
     public void setLongitude(BigDecimal longitude) { this.longitude = longitude; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
+    public OffsetDateTime getLastSeenAt() { return lastSeenAt; }
 }

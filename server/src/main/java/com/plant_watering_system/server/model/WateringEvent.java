@@ -17,7 +17,7 @@ public class WateringEvent {
     @Column(name = "instance_id", nullable = false)
     private UUID instanceId;
 
-    @Column(name = "started_at", nullable = false)
+    @Column(name = "started_at")
     private OffsetDateTime startedAt;
 
     @Column(name = "stopped_at")
@@ -30,6 +30,15 @@ public class WateringEvent {
 
     @Column(length = 30)
     private String outcome;
+
+    @Column(name = "requested_at")
+    private OffsetDateTime requestedAt;
+
+    @Column(name = "requested_duration_s")
+    private Integer requestedDurationSeconds;
+
+    @Column(name = "expires_at")
+    private OffsetDateTime expiresAt;
 
     public UUID getId() { return id; }
     public UUID getInstanceId() { return instanceId; }
@@ -44,4 +53,10 @@ public class WateringEvent {
     public void setTriggeredBy(String triggeredBy) { this.triggeredBy = triggeredBy; }
     public String getOutcome() { return outcome; }
     public void setOutcome(String outcome) { this.outcome = outcome; }
+    public OffsetDateTime getRequestedAt() { return requestedAt; }
+    public void setRequestedAt(OffsetDateTime requestedAt) { this.requestedAt = requestedAt; }
+    public Integer getRequestedDurationSeconds() { return requestedDurationSeconds; }
+    public void setRequestedDurationSeconds(Integer requestedDurationSeconds) { this.requestedDurationSeconds = requestedDurationSeconds; }
+    public OffsetDateTime getExpiresAt() { return expiresAt; }
+    public void setExpiresAt(OffsetDateTime expiresAt) { this.expiresAt = expiresAt; }
 }
